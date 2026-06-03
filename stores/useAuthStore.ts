@@ -1,33 +1,61 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { StyleProfile, User } from '@/types';
+import { supabase } from '@/services/supabase';
+import type { User } from '@/types';
+import { Session } from '@supabase/supabase-js';
 
 interface AuthState {
   user: User | null;
+  session: Session | null;
+  isInitialized: boolean;
   isOnboarded: boolean;
   isQuizCompleted: boolean;
   // Actions
-  setUser: (user: User) => void;
+  initializeSupabaseAuth: () => void;
   updateProfile: (updates: Partial<User>) => void;
   setOnboarded: () => void;
   setQuizCompleted: () => void;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
-      user: {
-        id: 'user-1',
-        name: 'Sofia Chen',
-        email: 'sofia@example.com',
-        avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&q=80',
-      },
+    (set, get) => ({
+      user: null,
+      session: null,
+      isInitialized: false,
       isOnboarded: false,
       isQuizCompleted: false,
 
-      setUser: (user) => set({ user }),
+      initializeSupabaseAuth: () => {
+        if (get().isInitialized) return;
+        
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          set({ 
+            session, 
+            user: session?.user ? {
+              id: session.user.id,
+              name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
+              email: session.user.email || '',
+              avatar: session.user.user_metadata?.avatar_url,
+            } : null,
+            isInitialized: true 
+          });
+        });
+
+        supabase.auth.onAuthStateChange((_event, session) => {
+          set({ 
+            session,
+            user: session?.user ? {
+              id: session.user.id,
+              name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
+              email: session.user.email || '',
+              avatar: session.user.user_metadata?.avatar_url,
+            } : null,
+          });
+        });
+      },
 
       updateProfile: (updates) =>
         set((state) => ({
@@ -38,16 +66,25 @@ export const useAuthStore = create<AuthState>()(
 
       setQuizCompleted: () => set({ isQuizCompleted: true }),
 
-      logout: () =>
+      logout: async () => {
+        await supabase.auth.signOut();
         set({
           user: null,
+          session: null,
           isOnboarded: false,
           isQuizCompleted: false,
-        }),
+        });
+      },
     }),
     {
       name: 'auth-storage',
       storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({ 
+        isOnboarded: state.isOnboarded, 
+        isQuizCompleted: state.isQuizCompleted 
+        // We do not persist `user` or `session` via Zustand because Supabase 
+        // handles its own secure token persistence internally via our custom adapter!
+      }),
     }
   )
 );

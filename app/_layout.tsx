@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -14,6 +14,8 @@ import {
 import * as SplashScreen from 'expo-splash-screen';
 import 'react-native-reanimated';
 import '../global.css';
+
+import { useAuthStore } from '@/stores/useAuthStore';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -34,11 +36,43 @@ export default function RootLayout() {
     Inter_700Bold,
   });
 
-  useEffect(() => {
-    if (fontsLoaded) SplashScreen.hideAsync();
-  }, [fontsLoaded]);
+  const { isInitialized, initializeSupabaseAuth, user, isOnboarded } = useAuthStore();
+  const segments = useSegments();
+  const router = useRouter();
 
-  if (!fontsLoaded) return null;
+  // 1. Initialize Supabase Auth on app start
+  useEffect(() => {
+    initializeSupabaseAuth();
+  }, [initializeSupabaseAuth]);
+
+  // 2. Hide Splash Screen when fonts are loaded AND auth is initialized
+  useEffect(() => {
+    if (fontsLoaded && isInitialized) {
+      SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded, isInitialized]);
+
+  // 3. Handle Route Protection
+  useEffect(() => {
+    if (!isInitialized) return;
+
+    const inAuthGroup = segments[0] === '(auth)';
+
+    if (!user && !inAuthGroup) {
+      // Redirect unauthenticated users to login
+      router.replace('/(auth)/login');
+    } else if (user && inAuthGroup) {
+      // Redirect authenticated users away from login
+      // If not onboarded, go there, otherwise go to tabs
+      if (!isOnboarded) {
+        router.replace('/onboarding');
+      } else {
+        router.replace('/(tabs)');
+      }
+    }
+  }, [user, isInitialized, segments, isOnboarded]);
+
+  if (!fontsLoaded || !isInitialized) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -46,6 +80,7 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <StatusBar style="light" backgroundColor="#0A0A0F" />
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0A0A0F' } }}>
+            <Stack.Screen name="(auth)" />
             <Stack.Screen name="onboarding/index" />
             <Stack.Screen name="quiz/index" />
             <Stack.Screen name="(tabs)" />
