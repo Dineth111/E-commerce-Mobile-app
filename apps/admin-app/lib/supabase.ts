@@ -1,11 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
-import type { Role } from '../types';
-
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { Platform } from 'react-native';
 
-const URL = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-const KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || process.env.EXPO_PUBLIC_SUPABASE_KEY!;
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || process.env.EXPO_PUBLIC_SUPABASE_KEY!;
 
 let customStorage;
 
@@ -25,13 +24,16 @@ if (Platform.OS !== 'web') {
   };
 }
 
-export const supabase = createClient(URL, KEY, {
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     storage: customStorage,
-    persistSession: true,
     autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false,
   },
 });
+
+export type Role = 'admin' | 'customer';
 
 export async function getUserRole(userId: string): Promise<Role | null> {
   const { data, error } = await supabase

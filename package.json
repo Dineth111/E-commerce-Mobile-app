@@ -6,7 +6,7 @@
     "packages/*"
   ],
   "scripts": {
-    "fashion": "npm run start --workspace=fashion-app",
+    "fashion": "npm run start --workspace=e-commerce-mobile-app",
     "admin": "npm run start --workspace=admin-app",
     "dev": "turbo run start --parallel"
   },
