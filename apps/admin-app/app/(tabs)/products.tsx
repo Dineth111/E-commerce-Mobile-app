@@ -1,33 +1,57 @@
 import { useState } from 'react';
 import {
   View, Text, FlatList, TextInput, TouchableOpacity,
-  Switch, StyleSheet,
+  Switch, StyleSheet, ActivityIndicator, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Colors, Spacing, Radius } from '@/constants/theme';
-
-const MOCK_PRODUCTS = [
-  { id: '1', name: 'Silk Wrap Dress', category: 'Dresses', price: 14500, stock: 23, is_active: true },
-  { id: '2', name: 'Leather Biker Jacket', category: 'Jackets', price: 28900, stock: 8, is_active: true },
-  { id: '3', name: 'Linen Wide-Leg Trousers', category: 'Bottoms', price: 9800, stock: 15, is_active: true },
-  { id: '4', name: 'Cashmere Turtleneck', category: 'Tops', price: 18600, stock: 0, is_active: false },
-  { id: '5', name: 'Floral Midi Skirt', category: 'Skirts', price: 7200, stock: 32, is_active: true },
-];
+import { supabase } from '@/lib/supabase';
 
 export default function ProductsScreen() {
   const router = useRouter();
-  const [query, setQuery] = useState('');
-  const [products, setProducts] = useState(MOCK_PRODUCTS);
+  const queryClient = useQueryClient();
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Fetch real products from Supabase
+  const { data: products = [], isLoading, error } = useQuery({
+    queryKey: ['products'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .order('name');
+      if (error) throw error;
+      return data || [];
+    }
+  });
+
+  // Mutation to toggle active status
+  const toggleMutation = useMutation({
+    mutationFn: async ({ id, is_active }: { id: string, is_active: boolean }) => {
+      const { error } = await supabase
+        .from('products')
+        .update({ is_active })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+    },
+    onError: (error) => {
+      Alert.alert('Error updating status', error.message);
+    }
+  });
 
   const filtered = products.filter(p =>
-    p.name.toLowerCase().includes(query.toLowerCase()) ||
-    p.category.toLowerCase().includes(query.toLowerCase())
+    p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    p.category.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const toggleActive = (id: string) => {
-    setProducts(prev => prev.map(p => p.id === id ? { ...p, is_active: !p.is_active } : p));
+  const toggleActive = (id: string, currentStatus: boolean) => {
+    toggleMutation.mutate({ id, is_active: !currentStatus });
   };
 
   return (
@@ -45,54 +69,70 @@ export default function ProductsScreen() {
           style={styles.searchInput}
           placeholder="Search products..."
           placeholderTextColor={Colors.textMuted}
-          value={query}
-          onChangeText={setQuery}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
         />
       </View>
 
-      {/* List */}
-      <FlatList
-        data={filtered}
-        keyExtractor={item => item.id}
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.productRow}
-            onPress={() => router.push(`/product/${item.id}` as any)}
-            activeOpacity={0.8}
-          >
-            <View style={styles.imgPlaceholder}>
-              <Ionicons name="image-outline" size={24} color={Colors.textMuted} />
+      {/* Loading & Error States */}
+      {isLoading ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={Colors.accent} />
+        </View>
+      ) : error ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <Text style={{ color: Colors.cancelled, textAlign: 'center' }}>Error loading products: {error.message}</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={item => item.id}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={{ alignItems: 'center', marginTop: 40 }}>
+              <Ionicons name="cube-outline" size={48} color={Colors.textMuted} />
+              <Text style={{ color: Colors.textMuted, marginTop: 12 }}>No products found.</Text>
             </View>
-            <View style={styles.productInfo}>
-              <Text style={styles.productName} numberOfLines={1}>{item.name}</Text>
-              <Text style={styles.productCategory}>{item.category}</Text>
-              <Text style={styles.productPrice}>LKR {item.price.toLocaleString()}</Text>
-            </View>
-            <View style={styles.productRight}>
-              <View style={[
-                styles.stockBadge,
-                { backgroundColor: item.stock > 0 ? Colors.green + '22' : Colors.cancelled + '22' }
-              ]}>
-                <Text style={[
-                  styles.stockText,
-                  { color: item.stock > 0 ? Colors.green : Colors.cancelled }
-                ]}>
-                  {item.stock > 0 ? `${item.stock} in stock` : 'Out'}
-                </Text>
+          }
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={styles.productRow}
+              onPress={() => router.push(`/product/${item.id}` as any)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.imgPlaceholder}>
+                <Ionicons name="image-outline" size={24} color={Colors.textMuted} />
               </View>
-              <Switch
-                value={item.is_active}
-                onValueChange={() => toggleActive(item.id)}
-                trackColor={{ false: Colors.border, true: Colors.accent + '88' }}
-                thumbColor={item.is_active ? Colors.accent : Colors.textMuted}
-                style={{ transform: [{ scale: 0.85 }] }}
-              />
-            </View>
-          </TouchableOpacity>
-        )}
-      />
+              <View style={styles.productInfo}>
+                <Text style={styles.productName} numberOfLines={1}>{item.name}</Text>
+                <Text style={styles.productCategory}>{item.category}</Text>
+                <Text style={styles.productPrice}>LKR {item.price?.toLocaleString() ?? '0'}</Text>
+              </View>
+              <View style={styles.productRight}>
+                <View style={[
+                  styles.stockBadge,
+                  { backgroundColor: item.stock_count > 0 ? Colors.green + '22' : Colors.cancelled + '22' }
+                ]}>
+                  <Text style={[
+                    styles.stockText,
+                    { color: item.stock_count > 0 ? Colors.green : Colors.cancelled }
+                  ]}>
+                    {item.stock_count > 0 ? `${item.stock_count} in stock` : 'Out'}
+                  </Text>
+                </View>
+                <Switch
+                  value={item.is_active ?? true}
+                  onValueChange={() => toggleActive(item.id, item.is_active ?? true)}
+                  trackColor={{ false: Colors.border, true: Colors.accent + '88' }}
+                  thumbColor={(item.is_active ?? true) ? Colors.accent : Colors.textMuted}
+                  style={{ transform: [{ scale: 0.85 }] }}
+                />
+              </View>
+            </TouchableOpacity>
+          )}
+        />
+      )}
 
       {/* FAB */}
       <TouchableOpacity
