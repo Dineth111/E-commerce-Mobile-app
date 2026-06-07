@@ -24,16 +24,6 @@ export default function LoginScreen() {
       Alert.alert('Error', 'Please enter email and password');
       return;
     }
-    
-    // Developer Bypass
-    if (email === 'admin@gmail.com' && password === 'admin123') {
-      try {
-        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-        await AsyncStorage.setItem('mock_admin', 'true');
-        router.replace('/(tabs)');
-        return;
-      } catch(e) {}
-    }
 
     setLoading(true);
     try {

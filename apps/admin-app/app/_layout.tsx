@@ -18,13 +18,6 @@ function AuthGuard() {
   useEffect(() => {
     (async () => {
       try {
-        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-        const isMock = await AsyncStorage.getItem('mock_admin');
-        if (isMock === 'true') {
-          setChecking(false);
-          return;
-        }
-
         const { data, error } = await supabase.auth.getSession();
         if (error || !data?.session) {
           setChecking(false);
@@ -39,7 +32,7 @@ function AuthGuard() {
         }
         setChecking(false);
       } catch (e) {
-        console.error("Auth check failed:", e);
+        console.error('Auth check failed:', e);
         setChecking(false);
         router.replace('/login');
       }

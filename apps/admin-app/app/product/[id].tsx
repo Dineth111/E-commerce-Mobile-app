@@ -85,6 +85,7 @@ export default function ProductEditorScreen() {
   const uploadImages = async (imageUris: string[]) => {
     const uploadedUrls: string[] = [];
     for (const uri of imageUris) {
+      // Already a remote URL — keep as-is
       if (uri.startsWith('http')) {
         uploadedUrls.push(uri);
         continue;
@@ -92,19 +93,32 @@ export default function ProductEditorScreen() {
       try {
         const response = await fetch(uri);
         const blob = await response.blob();
-        const ext = uri.split('.').pop() || 'jpg';
+
+        // Detect mime type from blob, fallback to jpeg
+        const mimeType = blob.type || 'image/jpeg';
+        const ext = mimeType.split('/')[1]?.split('+')[0] || 'jpg';
         const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
-        
+
         const { data, error } = await supabase.storage
           .from('product-images')
-          .upload(fileName, blob, { contentType: `image/${ext}` });
-          
-        if (error) throw error;
-        
-        const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(fileName);
+          .upload(fileName, blob, {
+            contentType: mimeType,
+            upsert: false,
+          });
+
+        if (error) {
+          console.error('Storage upload error:', error.message);
+          // Don't crash — skip this image
+          continue;
+        }
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('product-images')
+          .getPublicUrl(fileName);
         uploadedUrls.push(publicUrl);
-      } catch (err) {
-        console.error("Error uploading image:", err);
+      } catch (err: any) {
+        console.error('Error uploading image:', err?.message || err);
+        // Skip failed images and continue
       }
     }
     return uploadedUrls;
