@@ -14,12 +14,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeIn, FadeOut, SlideInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { useQuery } from '@tanstack/react-query';
-import { COLORS, FONTS, FONT_SIZES, RADIUS, SPACING } from '@/constants/theme';
+import { COLORS, FONTS, FONT_SIZES, RADIUS, SPACING, SHADOWS } from '@/constants/theme';
 import { ProductCard } from '@/components/product/ProductCard';
 import { ProductCardSkeleton } from '@/components/ui/SkeletonLoader';
 import { searchProducts, getAutocompleteSuggestions } from '@/services/products';
@@ -36,25 +37,43 @@ const FILTER_CATEGORIES: { id: Category | 'all'; label: string }[] = [
   { id: 'outerwear', label: 'Outerwear' },
   { id: 'shoes', label: 'Shoes' },
   { id: 'accessories', label: 'Accessories' },
-  { id: 'activewear', label: 'Active' },
+  { id: 'activewear', label: 'Activewear' },
+  { id: 'formal', label: 'Formal' },
 ];
 
-const SEARCH_HISTORY = ['Silk midi dress', 'Leather jacket', 'Linen trousers', 'Gold earrings'];
+const CATEGORY_IMAGES: Record<string, string> = {
+  all: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=500&q=80',
+  dresses: 'https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=500&q=80',
+  tops: 'https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?w=500&q=80',
+  bottoms: 'https://images.unsplash.com/photo-1541099649105-f69ad21f3246?w=500&q=80',
+  outerwear: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=500&q=80',
+  shoes: 'https://images.unsplash.com/photo-1549298916-b41d501d3772?w=500&q=80',
+  accessories: 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=500&q=80',
+  activewear: 'https://images.unsplash.com/photo-1518310383802-640c2de311b2?w=500&q=80',
+  formal: 'https://images.unsplash.com/photo-1487309078313-be80b3aa1b42?w=500&q=80',
+};
+
+const POPULAR_VIBES = ['Minimalist', 'Streetwear', 'Bohemian', 'Vintage', 'Formal Suit', 'Athleisure'];
 
 export default function SearchScreen() {
   const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<Category | 'all'>('all');
   const [filters, setFilters] = useState<SearchFilters>({});
-  const [priceRange, setPriceRange] = useState({ min: 0, max: 1000 });
   const [showFilters, setShowFilters] = useState(false);
   const [visualSearchLoading, setVisualSearchLoading] = useState(false);
   const [visualResult, setVisualResult] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [history, setHistory] = useState<string[]>([
+    'Silk Wrap Dress',
+    'Leather Jacket',
+    'Denim Trousers',
+    'Gold Earrings',
+  ]);
   const inputRef = useRef<TextInput>(null);
 
   const hasQuery = query.trim().length > 0 || activeCategory !== 'all';
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['search', query, activeCategory, filters],
     queryFn: () =>
       searchProducts(query, {
@@ -74,6 +93,18 @@ export default function SearchScreen() {
     }
   };
 
+  const selectQuery = (text: string) => {
+    setQuery(text);
+    setSuggestions([]);
+    if (!history.includes(text)) {
+      setHistory(prev => [text, ...prev.slice(0, 4)]);
+    }
+  };
+
+  const clearHistoryItem = (itemToClear: string) => {
+    setHistory(prev => prev.filter(h => h !== itemToClear));
+  };
+
   const handleVisualSearch = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -88,20 +119,23 @@ export default function SearchScreen() {
       try {
         const { items } = await visualSearch(result.assets[0].base64 ?? '');
         setVisualResult(items.map((i: any) => `${i.type} (${i.color}, ${i.style})`).join(', '));
-        setQuery(items[0]?.type ?? '');
+        selectQuery(items[0]?.type ?? '');
       } finally {
         setVisualSearchLoading(false);
       }
     }
   };
 
-  const renderProduct = useCallback(({ item }: any) => (
-    <ProductCard product={item} width={(SCREEN_WIDTH - 48) / 2} />
-  ), []);
-
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        
+        {/* ─── Premium Header ─── */}
+        <View style={styles.headerTitleContainer}>
+          <Text style={styles.premiumHeaderTitle}>DISCOVER</Text>
+          <Text style={styles.premiumHeaderSubtitle}>Curated styles for your personal vibe</Text>
+        </View>
+
         {/* ─── Search Bar ─── */}
         <View style={styles.searchBar}>
           <View style={styles.searchInput}>
@@ -111,6 +145,7 @@ export default function SearchScreen() {
               style={styles.input}
               value={query}
               onChangeText={handleQueryChange}
+              onSubmitEditing={() => selectQuery(query)}
               placeholder="Search styles, brands, vibes..."
               placeholderTextColor={COLORS.muted}
               returnKeyType="search"
@@ -151,7 +186,7 @@ export default function SearchScreen() {
         {suggestions.length > 0 && (
           <Animated.View entering={SlideInDown.duration(200)} style={styles.suggestions}>
             {suggestions.map((s) => (
-              <TouchableOpacity key={s} style={styles.suggestionItem} onPress={() => { setQuery(s); setSuggestions([]); }}>
+              <TouchableOpacity key={s} style={styles.suggestionItem} onPress={() => selectQuery(s)}>
                 <Ionicons name="search-outline" size={14} color={COLORS.muted} />
                 <Text style={styles.suggestionText}>{s}</Text>
               </TouchableOpacity>
@@ -159,75 +194,160 @@ export default function SearchScreen() {
           </Animated.View>
         )}
 
-        {/* ─── Category Pills ─── */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categories}
-        >
-          {FILTER_CATEGORIES.map((cat) => (
-            <TouchableOpacity
-              key={cat.id}
-              style={[styles.catPill, activeCategory === cat.id && styles.catPillActive]}
-              onPress={async () => {
-                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setActiveCategory(cat.id);
-              }}
-            >
-              <Text style={[styles.catLabel, activeCategory === cat.id && styles.catLabelActive]}>
-                {cat.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        {/* ─── Category Mini-Cards ─── */}
+        <View style={{ height: 65, marginBottom: 8 }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categories}
+          >
+            {FILTER_CATEGORIES.map((cat) => {
+              const isActive = activeCategory === cat.id;
+              return (
+                <TouchableOpacity
+                  key={cat.id}
+                  style={[styles.catCard, isActive && styles.catCardActive]}
+                  onPress={async () => {
+                    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setActiveCategory(cat.id);
+                  }}
+                >
+                  <Image
+                    source={{ uri: CATEGORY_IMAGES[cat.id] }}
+                    style={StyleSheet.absoluteFillObject}
+                    contentFit="cover"
+                  />
+                  <LinearGradient
+                    colors={isActive ? ['rgba(233,30,140,0.65)', 'rgba(233,30,140,0.85)'] : ['rgba(0,0,0,0.4)', 'rgba(0,0,0,0.7)']}
+                    style={StyleSheet.absoluteFillObject}
+                  />
+                  <Text style={[styles.catCardText, isActive && styles.catCardTextActive]}>
+                    {cat.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
 
         {/* ─── Results or Empty State ─── */}
         {!hasQuery ? (
           <ScrollView contentContainerStyle={styles.emptyState}>
-            <Text style={styles.emptyTitle}>✦ Discover Fashion</Text>
-            <Text style={styles.emptySubtitle}>Search or browse by category</Text>
-            <View style={styles.historySection}>
-              <Text style={styles.historyTitle}>Recent Searches</Text>
-              {SEARCH_HISTORY.map((h) => (
-                <TouchableOpacity key={h} style={styles.historyItem} onPress={() => setQuery(h)}>
-                  <Ionicons name="time-outline" size={16} color={COLORS.muted} />
-                  <Text style={styles.historyText}>{h}</Text>
+            
+            {/* Visual Categories Grid */}
+            <Text style={styles.sectionTitle}>✦ Explore Categories</Text>
+            <View style={styles.categoryGrid}>
+              {FILTER_CATEGORIES.filter(c => c.id !== 'all').map((cat) => (
+                <TouchableOpacity
+                  key={cat.id}
+                  style={styles.gridCatCard}
+                  onPress={async () => {
+                    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    setActiveCategory(cat.id);
+                  }}
+                >
+                  <Image
+                    source={{ uri: CATEGORY_IMAGES[cat.id] }}
+                    style={StyleSheet.absoluteFillObject}
+                    contentFit="cover"
+                  />
+                  <LinearGradient
+                    colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.85)']}
+                    style={StyleSheet.absoluteFillObject}
+                  />
+                  <View style={styles.gridCatCardOverlay}>
+                    <Text style={styles.gridCatCardText}>{cat.label}</Text>
+                    <Ionicons name="arrow-forward-circle" size={18} color="#fff" />
+                  </View>
                 </TouchableOpacity>
               ))}
             </View>
+
+            {/* Popular Vibes / Tags */}
+            <Text style={styles.sectionTitle}>✦ Discover Vibes</Text>
+            <View style={styles.vibesContainer}>
+              {POPULAR_VIBES.map((vibe) => (
+                <TouchableOpacity
+                  key={vibe}
+                  style={styles.vibePill}
+                  onPress={async () => {
+                    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    selectQuery(vibe);
+                  }}
+                >
+                  <Text style={styles.vibeText}>#{vibe.toLowerCase()}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Recent Searches */}
+            {history.length > 0 && (
+              <View style={styles.historySection}>
+                <Text style={styles.sectionTitle}>✦ Recent Searches</Text>
+                <View style={styles.historyItemsContainer}>
+                  {history.map((h) => (
+                    <View key={h} style={styles.historyPill}>
+                      <TouchableOpacity style={styles.historyPillButton} onPress={() => selectQuery(h)}>
+                        <Ionicons name="time-outline" size={14} color={COLORS.muted} />
+                        <Text style={styles.historyText}>{h}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => clearHistoryItem(h)} style={styles.historyCloseButton}>
+                        <Ionicons name="close" size={14} color={COLORS.muted} />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+            
           </ScrollView>
         ) : (
           <View style={styles.results}>
-            {/* Result count */}
-            {!isLoading && data && (
-              <Animated.View entering={FadeIn} style={styles.resultHeader}>
-                <Text style={styles.resultCount}>
-                  {data.total} results {query ? `for "${query}"` : ''}
-                </Text>
-              </Animated.View>
-            )}
+            {/* Result count & Clear filter */}
+            <Animated.View entering={FadeIn} style={styles.resultHeader}>
+              <Text style={styles.resultCount}>
+                {isLoading ? 'Searching...' : `${data?.total ?? 0} results ${query ? `for "${query}"` : ''}`}
+              </Text>
+              {(query || activeCategory !== 'all') && (
+                <TouchableOpacity onPress={() => { setQuery(''); setActiveCategory('all'); setFilters({}); }}>
+                  <Text style={styles.clearAllBtn}>Clear all</Text>
+                </TouchableOpacity>
+              )}
+            </Animated.View>
 
             <FlashList
               data={isLoading ? Array.from({ length: 6 }) : (data?.products ?? [])}
               numColumns={2}
+              masonry
               estimatedItemSize={280}
               contentContainerStyle={styles.grid}
-              renderItem={({ item, index }) =>
-                isLoading ? (
-                  <View key={index} style={styles.gridItem}>
-                    <ProductCardSkeleton />
-                  </View>
-                ) : (
+              renderItem={({ item, index }) => {
+                if (isLoading) {
+                  return (
+                    <View style={styles.gridItem}>
+                      <ProductCardSkeleton />
+                    </View>
+                  );
+                }
+                const itemIndex = index ?? 0;
+                // Alternate aspect ratios to give a beautiful magazine staggered feel
+                const aspect = itemIndex % 3 === 0 ? 1.2 : itemIndex % 3 === 1 ? 1.45 : 1.32;
+                return (
                   <View style={styles.gridItem}>
-                    <ProductCard product={item as any} width={(SCREEN_WIDTH - 48) / 2} />
+                    <ProductCard
+                      product={item as any}
+                      width={(SCREEN_WIDTH - 44) / 2}
+                      aspectRatio={aspect}
+                    />
                   </View>
-                )
-              }
+                );
+              }}
               ListEmptyComponent={
                 !isLoading ? (
                   <View style={styles.noResults}>
+                    <Ionicons name="sad-outline" size={48} color={COLORS.muted} />
                     <Text style={styles.noResultsText}>No results found</Text>
-                    <Text style={styles.noResultsSubtext}>Try a different search or category</Text>
+                    <Text style={styles.noResultsSubtext}>Try adjusting your keywords or category filters</Text>
                   </View>
                 ) : null
               }
@@ -320,6 +440,23 @@ function FilterModal({ visible, onClose, onApply }: {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
+  headerTitleContainer: {
+    paddingHorizontal: SPACING.base,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.xs,
+  },
+  premiumHeaderTitle: {
+    fontSize: FONT_SIZES['2xl'],
+    color: COLORS.foreground,
+    fontFamily: FONTS.bold,
+    letterSpacing: 2,
+  },
+  premiumHeaderSubtitle: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.muted,
+    fontFamily: FONTS.regular,
+    marginTop: 2,
+  },
   searchBar: {
     flexDirection: 'row',
     paddingHorizontal: SPACING.base,
@@ -338,6 +475,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     height: 44,
+    ...SHADOWS.sm,
   },
   input: {
     flex: 1,
@@ -388,6 +526,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     marginBottom: 4,
     overflow: 'hidden',
+    zIndex: 10,
   },
   suggestionItem: {
     flexDirection: 'row',
@@ -398,33 +537,145 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   suggestionText: { fontSize: FONT_SIZES.sm, color: COLORS.foreground, fontFamily: FONTS.regular },
-  categories: { paddingHorizontal: SPACING.base, gap: 8, paddingVertical: 4 },
-  catPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+  
+  categories: { paddingHorizontal: SPACING.base, gap: 10, paddingVertical: 2 },
+  catCard: {
+    width: 100,
+    height: 52,
+    borderRadius: RADIUS.md,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  catCardActive: {
+    borderColor: COLORS.primary,
+    ...SHADOWS.primary,
+  },
+  catCardText: {
+    color: '#E0E0E0',
+    fontSize: FONT_SIZES.sm,
+    fontFamily: FONTS.medium,
+    textAlign: 'center',
+    zIndex: 1,
+  },
+  catCardTextActive: {
+    color: '#FFFFFF',
+    fontFamily: FONTS.bold,
+  },
+
+  emptyState: { paddingHorizontal: SPACING.base, paddingTop: SPACING.sm, paddingBottom: SPACING['3xl'] },
+  sectionTitle: {
+    fontSize: FONT_SIZES.base,
+    color: COLORS.foreground,
+    fontFamily: FONTS.semiBold,
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.md,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 4,
+  },
+  gridCatCard: {
+    width: (SCREEN_WIDTH - 32 - 12) / 2,
+    height: 100,
+    borderRadius: RADIUS.lg,
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+    ...SHADOWS.sm,
+  },
+  gridCatCardOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: SPACING.sm,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  gridCatCardText: {
+    color: '#FFFFFF',
+    fontSize: FONT_SIZES.base,
+    fontFamily: FONTS.bold,
+  },
+  
+  vibesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  vibePill: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: RADIUS.full,
     backgroundColor: COLORS.surface,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  catPillActive: { backgroundColor: `${COLORS.primary}15`, borderColor: COLORS.primary },
-  catLabel: { fontSize: FONT_SIZES.sm, color: COLORS.muted, fontFamily: FONTS.medium },
-  catLabelActive: { color: COLORS.primary, fontFamily: FONTS.semiBold },
-  emptyState: { paddingHorizontal: SPACING.base, paddingTop: SPACING['3xl'], alignItems: 'center' },
-  emptyTitle: { fontSize: FONT_SIZES.xl, color: COLORS.foreground, fontFamily: FONTS.bold, marginBottom: 6 },
-  emptySubtitle: { fontSize: FONT_SIZES.base, color: COLORS.muted, fontFamily: FONTS.regular, marginBottom: SPACING['2xl'] },
-  historySection: { width: '100%', gap: 4 },
-  historyTitle: { fontSize: FONT_SIZES.sm, color: COLORS.muted, fontFamily: FONTS.semiBold, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.8 },
-  historyItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  historyText: { fontSize: FONT_SIZES.base, color: COLORS.foreground, fontFamily: FONTS.regular },
+  vibeText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.foregroundSecondary,
+    fontFamily: FONTS.medium,
+  },
+
+  historySection: {
+    width: '100%',
+  },
+  historyItemsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  historyPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface2,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
+  },
+  historyPillButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingLeft: 12,
+    paddingRight: 6,
+    paddingVertical: 8,
+  },
+  historyText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.foregroundSecondary,
+    fontFamily: FONTS.regular,
+  },
+  historyCloseButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderLeftWidth: 1,
+    borderLeftColor: COLORS.border,
+  },
+
   results: { flex: 1 },
-  resultHeader: { paddingHorizontal: SPACING.base, paddingVertical: SPACING.sm },
+  resultHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    paddingHorizontal: SPACING.base, 
+    paddingBottom: SPACING.sm 
+  },
   resultCount: { fontSize: FONT_SIZES.sm, color: COLORS.muted, fontFamily: FONTS.medium },
-  grid: { paddingHorizontal: SPACING.base, paddingBottom: SPACING['3xl'] },
-  gridItem: { paddingVertical: 6, paddingHorizontal: 4 },
-  noResults: { alignItems: 'center', paddingTop: SPACING['5xl'] },
-  noResultsText: { fontSize: FONT_SIZES.lg, color: COLORS.foreground, fontFamily: FONTS.semiBold },
-  noResultsSubtext: { fontSize: FONT_SIZES.sm, color: COLORS.muted, fontFamily: FONTS.regular, marginTop: 8 },
+  clearAllBtn: { fontSize: FONT_SIZES.sm, color: COLORS.primary, fontFamily: FONTS.semiBold },
+  grid: { paddingHorizontal: 12, paddingBottom: SPACING['3xl'] },
+  gridItem: { padding: 4 },
+  noResults: { alignItems: 'center', paddingTop: SPACING['5xl'], paddingHorizontal: SPACING['2xl'] },
+  noResultsText: { fontSize: FONT_SIZES.lg, color: COLORS.foreground, fontFamily: FONTS.semiBold, marginTop: 16 },
+  noResultsSubtext: { fontSize: FONT_SIZES.sm, color: COLORS.muted, fontFamily: FONTS.regular, marginTop: 8, textAlign: 'center' },
 });
 
 const filterStyles = StyleSheet.create({
@@ -479,3 +730,4 @@ const filterStyles = StyleSheet.create({
   },
   applyText: { fontSize: FONT_SIZES.md, color: '#fff', fontFamily: FONTS.bold },
 });
+

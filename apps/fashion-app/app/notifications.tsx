@@ -32,7 +32,11 @@ export default function NotificationsScreen() {
   const handleNotificationPress = (notif: any) => {
     markAsRead(notif.id);
     if (notif.type === 'order') {
-      router.push('/(tabs)/profile');
+      if (notif.data?.orderId) {
+        router.push(`/order/${notif.data.orderId}`);
+      } else {
+        router.push('/(tabs)/profile');
+      }
     } else if (notif.type === 'product' && notif.data?.productId) {
       router.push(`/product/${notif.data.productId}`);
     }

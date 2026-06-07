@@ -28,11 +28,12 @@ interface ProductCardProps {
   product: Product;
   width?: number;
   style?: object;
+  aspectRatio?: number;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-export function ProductCard({ product, width = 168, style }: ProductCardProps) {
+export function ProductCard({ product, width = 168, style, aspectRatio }: ProductCardProps) {
   const router = useRouter();
   const { isWishlisted, toggleItem } = useWishlistStore();
   const wishlisted = isWishlisted(product.id);
@@ -79,7 +80,7 @@ export function ProductCard({ product, width = 168, style }: ProductCardProps) {
         <View style={styles.imageContainer}>
           <Image
             source={{ uri: product.images[0] }}
-            style={[styles.image, { height: width * 1.35 }]}
+            style={[styles.image, { height: width * (aspectRatio ?? 1.35) }]}
             contentFit="cover"
             transition={300}
           />

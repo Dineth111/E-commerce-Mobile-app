@@ -15,7 +15,7 @@ export function useSupabaseRealtime() {
 
       // ─── Subscribe to Order Status Updates for THIS user ───────────────────
       ordersSub = supabase
-        .channel(`orders-user-${user.id}`)
+        .channel(`orders-user-${user.id}-${Math.random().toString(36).substring(7)}`)
         .on(
           'postgres_changes',
           {
@@ -51,7 +51,7 @@ export function useSupabaseRealtime() {
 
       // ─── Subscribe to New Product Arrivals (global) ────────────────────────
       productsSub = supabase
-        .channel('new-products')
+        .channel(`new-products-${Math.random().toString(36).substring(7)}`)
         .on(
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'products' },

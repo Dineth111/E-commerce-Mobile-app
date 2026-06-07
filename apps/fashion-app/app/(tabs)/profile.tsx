@@ -276,7 +276,12 @@ export default function ProfileScreen() {
               const thumbnail   = getOrderThumbnail(order);
 
               return (
-                <View key={order.id} style={styles.orderCard}>
+                <TouchableOpacity
+                  key={order.id}
+                  style={styles.orderCard}
+                  onPress={() => router.push(`/order/${order.id}`)}
+                  activeOpacity={0.9}
+                >
                   <Image
                     source={{ uri: thumbnail }}
                     style={styles.orderImage}
@@ -302,7 +307,7 @@ export default function ProfileScreen() {
                       {itemCount} item{itemCount !== 1 ? 's' : ''} · ${order.total_amount.toFixed(2)}
                     </Text>
                   </View>
-                </View>
+                </TouchableOpacity>
               );
             })}
 

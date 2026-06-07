@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   View, Text, ScrollView, TextInput, TouchableOpacity,
-  StyleSheet, Alert,
+  StyleSheet, Alert, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,12 +12,29 @@ import { useQueryClient } from '@tanstack/react-query';
 
 export default function NewUserScreen() {
   const router = useRouter();
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/users');
+    }
+  };
   const queryClient = useQueryClient();
+
+  const generatePassword = () => {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#';
+    let pass = '';
+    for (let i = 0; i < 10; i++) {
+      pass += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return pass;
+  };
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<'customer' | 'admin'>('customer');
+  const [password, setPassword] = useState(generatePassword());
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -34,16 +51,42 @@ export default function NewUserScreen() {
         email: email,
         phone: phone,
         role: role,
-        // Mock a user ID if needed, but uuid generates automatically 
       };
 
       const { error } = await supabase.from('profiles').insert([payload]);
       if (error) throw error;
 
       queryClient.invalidateQueries({ queryKey: ['users'] });
-      Alert.alert('Success', 'User profile created successfully', [
-        { text: 'OK', onPress: () => router.back() }
-      ]);
+
+      const subject = 'Welcome to Vogue Fashion! ✦ Your Account Details';
+      const body = `Hi ${fullName},\n\n` +
+        `Your user account has been successfully created.\n\n` +
+        `Here are your login credentials:\n` +
+        `• Email: ${email}\n` +
+        `• Temporary Password: ${password}\n\n` +
+        `Please download the Fashion App and log in using these details.\n\n` +
+        `Best regards,\n` +
+        `Vogue Fashion Team`;
+      
+      const mailtoUrl = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+      Alert.alert(
+        'Success 📧',
+        'User profile created successfully! We will now open your email composer to draft their welcome credentials.',
+        [
+          {
+            text: 'Draft Email',
+            onPress: async () => {
+              try {
+                await Linking.openURL(mailtoUrl);
+              } catch (linkErr) {
+                Alert.alert('Mail Error', 'Could not open mail client. Please copy password: ' + password);
+              }
+              handleBack();
+            }
+          }
+        ]
+      );
     } catch (e: any) {
       Alert.alert('Error creating user', e.message);
     } finally {
@@ -54,7 +97,7 @@ export default function NewUserScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color={Colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Add New User</Text>
@@ -89,6 +132,24 @@ export default function NewUserScreen() {
           placeholderTextColor={Colors.textMuted}
           keyboardType="phone-pad"
         />
+
+        <Text style={styles.fieldLabel}>Temporary Password *</Text>
+        <View style={styles.passwordRow}>
+          <TextInput
+            style={[styles.input, { flex: 1 }]}
+            value={password}
+            onChangeText={setPassword}
+            placeholder="Temporary Password"
+            placeholderTextColor={Colors.textMuted}
+            autoCapitalize="none"
+          />
+          <TouchableOpacity 
+            style={styles.regenerateBtn} 
+            onPress={() => setPassword(generatePassword())}
+          >
+            <Ionicons name="refresh" size={20} color={Colors.text} />
+          </TouchableOpacity>
+        </View>
 
         <Text style={styles.fieldLabel}>Role</Text>
         <View style={styles.roleRow}>
@@ -136,6 +197,17 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.border,
     color: Colors.text, fontSize: 14,
     paddingHorizontal: 14, paddingVertical: 12,
+  },
+  passwordRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  regenerateBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.surface2,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   roleRow: { flexDirection: 'row', gap: 12, marginTop: 4 },
   roleBtn: {

@@ -22,10 +22,12 @@ import { useCartStore } from '@/stores/useCartStore';
 import { ProductCard } from '@/components/product/ProductCard';
 import { MOCK_PRODUCTS } from '@/constants/mockData';
 import { createOrder } from '@/services/orders';
+import { useNotificationStore } from '@/stores/useNotificationStore';
 
 export default function CartScreen() {
   const router = useRouter();
   const { items, promoCode, promoDiscount, subtotal, total, applyPromoCode, clearCart } = useCartStore();
+  const addNotification = useNotificationStore((state) => state.addNotification);
   const [promoInput, setPromoInput] = useState('');
   const [promoError, setPromoError] = useState('');
   const [checkoutStep, setCheckoutStep] = useState<'cart' | 'checkout' | 'success'>('cart');
@@ -60,7 +62,13 @@ export default function CartScreen() {
 
     setLoading(true);
     try {
-      await createOrder(items, finalTotal, address, 'Credit Card');
+      const order = await createOrder(items, finalTotal, address, 'Credit Card');
+      addNotification({
+        title: 'Payment Successful! 💳',
+        body: `Payment of $${finalTotal.toFixed(2)} processed. Order #${order.id.slice(0, 8).toUpperCase()} is now pending.`,
+        type: 'order',
+        data: { orderId: order.id },
+      });
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setCheckoutStep('success');
       setTimeout(() => {

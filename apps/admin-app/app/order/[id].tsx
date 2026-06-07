@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Image, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -29,6 +28,13 @@ const statusColor: Record<string, string> = {
 export default function OrderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/orders');
+    }
+  };
   const queryClient = useQueryClient();
 
   const { data: order, isLoading, error } = useQuery({
@@ -75,7 +81,7 @@ export default function OrderDetailScreen() {
     return (
       <SafeAreaView style={[styles.safeArea, { justifyContent: 'center', alignItems: 'center' }]}>
         <Text style={{ color: Colors.textMuted }}>Failed to load order</Text>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 20 }}>
+        <TouchableOpacity onPress={handleBack} style={{ marginTop: 20 }}>
           <Text style={{ color: Colors.accent }}>Go Back</Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -87,24 +93,38 @@ export default function OrderDetailScreen() {
 
   const handleUpdateStatus = () => {
     if (!nextStatus) return;
-    Alert.alert('Update Status', `Move order to "${nextStatus}"?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Update', onPress: () => updateMutation.mutate(nextStatus) },
-    ]);
+    if (Platform.OS === 'web') {
+      const confirm = window.confirm(`Move order to "${nextStatus}"?`);
+      if (confirm) {
+        updateMutation.mutate(nextStatus);
+      }
+    } else {
+      Alert.alert('Update Status', `Move order to "${nextStatus}"?`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Update', onPress: () => updateMutation.mutate(nextStatus) },
+      ]);
+    }
   };
 
   const handleCancel = () => {
-    Alert.alert('Cancel Order', 'This will cancel the order. Are you sure?', [
-      { text: 'No', style: 'cancel' },
-      { text: 'Yes, Cancel', style: 'destructive', onPress: () => updateMutation.mutate('cancelled') },
-    ]);
+    if (Platform.OS === 'web') {
+      const confirm = window.confirm('This will cancel the order. Are you sure?');
+      if (confirm) {
+        updateMutation.mutate('cancelled');
+      }
+    } else {
+      Alert.alert('Cancel Order', 'This will cancel the order. Are you sure?', [
+        { text: 'No', style: 'cancel' },
+        { text: 'Yes, Cancel', style: 'destructive', onPress: () => updateMutation.mutate('cancelled') },
+      ]);
+    }
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color={Colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Order Details</Text>
@@ -157,12 +177,16 @@ export default function OrderDetailScreen() {
         <Text style={styles.sectionTitle}>Order Items</Text>
         {(order.items || []).map((item: any, i: number) => (
           <View key={i} style={styles.itemRow}>
-            <View style={styles.itemIcon}>
-              <Ionicons name="shirt-outline" size={22} color={Colors.textMuted} />
-            </View>
+            {item.image_url ? (
+              <Image source={{ uri: item.image_url }} style={styles.itemImage} resizeMode="cover" />
+            ) : (
+              <View style={styles.itemIcon}>
+                <Ionicons name="shirt-outline" size={22} color={Colors.textMuted} />
+              </View>
+            )}
             <View style={styles.itemInfo}>
-              <Text style={styles.itemName}>{item.product_name || 'Product'}</Text>
-              <Text style={styles.itemMeta}>Size: {item.size || 'N/A'} · Qty: {item.qty || 1}</Text>
+              <Text style={styles.itemName}>{item.name || item.product_name || 'Product'}</Text>
+              <Text style={styles.itemMeta}>Size: {item.size || 'N/A'} · Qty: {item.quantity || item.qty || 1}</Text>
             </View>
             <Text style={styles.itemPrice}>LKR {(item.price || 0).toLocaleString()}</Text>
           </View>
@@ -261,6 +285,10 @@ const styles = StyleSheet.create({
     width: 44, height: 44, borderRadius: 10,
     backgroundColor: Colors.surface2, alignItems: 'center', justifyContent: 'center',
     marginRight: 12,
+  },
+  itemImage: {
+    width: 44, height: 44, borderRadius: 10,
+    backgroundColor: Colors.surface2, marginRight: 12,
   },
   itemInfo: { flex: 1 },
   itemName: { fontSize: 13, fontWeight: '700', color: Colors.text },
