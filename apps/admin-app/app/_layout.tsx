@@ -18,6 +18,13 @@ function AuthGuard() {
   useEffect(() => {
     (async () => {
       try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const isMock = await AsyncStorage.getItem('mock_admin');
+        if (isMock === 'true') {
+          setChecking(false);
+          return;
+        }
+
         const { data, error } = await supabase.auth.getSession();
         if (error || !data?.session) {
           setChecking(false);

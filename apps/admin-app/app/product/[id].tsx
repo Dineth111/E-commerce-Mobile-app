@@ -147,6 +147,8 @@ export default function ProductEditorScreen() {
       };
 
       if (isNew) {
+        // Automatically mark freshly added items as new arrivals
+        payload.is_new = true;
         const { error } = await supabase.from('products').insert([payload]);
         if (error) throw error;
       } else {
