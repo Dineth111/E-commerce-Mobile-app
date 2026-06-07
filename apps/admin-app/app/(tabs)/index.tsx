@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Colors, Spacing, Radius } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { useNotificationStore } from '@/stores/useNotificationStore';
 
 const statusColor: Record<string, string> = {
   pending: Colors.pending,
@@ -19,6 +20,7 @@ export default function DashboardScreen() {
   const router = useRouter();
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-LK', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const unreadCount = useNotificationStore((state) => state.notifications.filter((n) => !n.read).length);
 
   const { data: stats, isLoading } = useQuery({
     queryKey: ['dashboard-stats'],
@@ -74,13 +76,29 @@ export default function DashboardScreen() {
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={styles.title}>Dashboard</Text>
             <Text style={styles.date}>{dateStr}</Text>
           </View>
-          <TouchableOpacity onPress={handleSignOut} style={styles.logoutBtn}>
-            <Ionicons name="log-out-outline" size={24} color={Colors.text} />
-          </TouchableOpacity>
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              onPress={() => router.push('/notifications')}
+              style={styles.headerBtn}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="notifications-outline" size={24} color={Colors.text} />
+              {unreadCount > 0 && (
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.notificationBadgeText}>
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleSignOut} style={styles.headerBtn} activeOpacity={0.7}>
+              <Ionicons name="log-out-outline" size={24} color={Colors.text} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {isLoading ? (
@@ -141,10 +159,31 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: Colors.bg },
   container: { paddingHorizontal: Spacing.lg, paddingBottom: 32 },
-  header: { paddingTop: Spacing.lg, marginBottom: Spacing.xl, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  header: { paddingTop: Spacing.lg, marginBottom: Spacing.xl, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { fontSize: 28, fontWeight: '800', color: Colors.text, letterSpacing: -0.5 },
   date: { fontSize: 13, color: Colors.textMuted, marginTop: 4 },
-  logoutBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.border },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headerBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.border, position: 'relative' },
+  notificationBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: Colors.accent,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: Colors.bg,
+  },
+  notificationBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

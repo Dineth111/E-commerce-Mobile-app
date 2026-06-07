@@ -292,7 +292,7 @@ export default function OrderDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  center: { flex: 1, alignItems: 'center', justifyItems: 'center', justifyContent: 'center', padding: SPACING.xl },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING.xl },
   loadingText: { color: COLORS.muted, marginTop: 12, fontFamily: FONTS.medium },
   errorText: { color: COLORS.error, marginTop: 12, textAlign: 'center', fontFamily: FONTS.medium, marginBottom: 16 },
   backBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: RADIUS.md },

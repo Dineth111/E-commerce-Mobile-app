@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -15,6 +16,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import * as ImagePicker from 'expo-image-picker';
 import { COLORS, FONTS, FONT_SIZES, RADIUS, SPACING, SHADOWS } from '@/constants/theme';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useStyleProfileStore } from '@/stores/useStyleProfileStore';
@@ -50,7 +52,7 @@ const FALLBACK_ORDER_IMAGE =
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { user, logout } = useAuthStore();
+  const { user, logout, updateUserProfile } = useAuthStore();
   const { profile, resetProfile } = useStyleProfileStore();
   const { items: wishlist } = useWishlistStore();
   const { totalItems } = useCartStore();
@@ -62,6 +64,12 @@ export default function ProfileScreen() {
   const [modalMessage, setModalMessage] = useState('');
   const [modalType, setModalType] = useState<'info' | 'confirm'>('info');
   const [onConfirmAction, setOnConfirmAction] = useState<(() => void) | null>(null);
+
+  // Edit Profile State
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editAvatar, setEditAvatar] = useState<string | null>(null);
+  const [savingProfile, setSavingProfile] = useState(false);
 
   const showCustomAlert = (title: string, message: string) => {
     setModalTitle(title);
@@ -77,6 +85,84 @@ export default function ProfileScreen() {
     setModalType('confirm');
     setOnConfirmAction(() => onConfirm);
     setModalVisible(true);
+  };
+
+  const handleOpenEdit = () => {
+    setEditName(user?.name || '');
+    setEditAvatar(user?.avatar || null);
+    setEditModalVisible(true);
+  };
+
+  const handlePickAvatar = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        showCustomAlert('Permission Denied', 'Please grant library permissions in settings to change your photo.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setEditAvatar(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Pick image error:', error);
+      showCustomAlert('Error', 'Failed to pick image.');
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    if (!editName.trim()) {
+      showCustomAlert('Validation Error', 'Please enter your name.');
+      return;
+    }
+
+    setSavingProfile(true);
+    try {
+      let finalAvatarUrl = editAvatar;
+
+      // If avatar was updated and is a local file URI
+      if (editAvatar && !editAvatar.startsWith('http')) {
+        const response = await fetch(editAvatar);
+        const blob = await response.blob();
+
+        const mimeType = blob.type || 'image/jpeg';
+        const ext = mimeType.split('/')[1]?.split('+')[0] || 'jpg';
+        const fileName = `avatar_${user?.id}_${Date.now()}.${ext}`;
+
+        const { data, error: uploadError } = await supabase.storage
+          .from('product-images')
+          .upload(fileName, blob, {
+            contentType: mimeType,
+            upsert: true,
+          });
+
+        if (uploadError) {
+          throw uploadError;
+        }
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('product-images')
+          .getPublicUrl(fileName);
+
+        finalAvatarUrl = publicUrl;
+      }
+
+      await updateUserProfile(editName.trim(), finalAvatarUrl);
+      setEditModalVisible(false);
+      showCustomAlert('Success', 'Profile updated successfully.');
+    } catch (err: any) {
+      console.error('Update profile error:', err);
+      showCustomAlert('Error', err.message || 'Failed to update profile.');
+    } finally {
+      setSavingProfile(false);
+    }
   };
 
   // ── Fetch real orders from Supabase ──────────────────────────────────────
@@ -173,16 +259,20 @@ export default function ProfileScreen() {
         <Animated.View entering={FadeInDown.duration(400)} style={styles.profileHeader}>
           <View style={styles.avatarWrapper}>
             <Image
-              source={{ uri: user?.avatar }}
+              source={{ uri: user?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&q=80' }}
               style={styles.avatar}
               contentFit="cover"
             />
-            <TouchableOpacity style={styles.editAvatarBtn}>
+            <TouchableOpacity style={styles.editAvatarBtn} onPress={handleOpenEdit}>
               <Ionicons name="camera" size={14} color="#fff" />
             </TouchableOpacity>
           </View>
           <Text style={styles.userName}>{user?.name}</Text>
           <Text style={styles.userEmail}>{user?.email}</Text>
+          <TouchableOpacity onPress={handleOpenEdit} style={styles.editProfileTextBtn}>
+            <Ionicons name="create-outline" size={13} color={COLORS.primary} />
+            <Text style={styles.editProfileText}>Edit Profile</Text>
+          </TouchableOpacity>
 
           {/* Stats */}
           <View style={styles.statsRow}>
@@ -387,6 +477,62 @@ export default function ProfileScreen() {
                 <Text style={styles.modalBtnOkText}>
                   {modalType === 'confirm' ? 'Confirm' : 'OK'}
                 </Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </View>
+      )}
+
+      {/* Edit Profile Modal Overlay */}
+      {editModalVisible && (
+        <View style={styles.modalOverlay}>
+          <Animated.View entering={FadeInDown.duration(200)} style={styles.editProfileModalContent}>
+            <Text style={styles.modalTitle}>Edit Profile</Text>
+
+            {/* Avatar picker in edit modal */}
+            <TouchableOpacity style={styles.editAvatarWrapper} onPress={handlePickAvatar} activeOpacity={0.8}>
+              <Image
+                source={{ uri: editAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&q=80' }}
+                style={styles.editAvatarImg}
+                contentFit="cover"
+              />
+              <View style={styles.editAvatarOverlay}>
+                <Ionicons name="camera" size={16} color="#fff" />
+              </View>
+            </TouchableOpacity>
+
+            {/* Name Input field */}
+            <View style={styles.fieldContainer}>
+              <Text style={styles.fieldLabel}>Full Name</Text>
+              <TextInput
+                style={styles.textInput}
+                value={editName}
+                onChangeText={setEditName}
+                placeholder="Enter your name"
+                placeholderTextColor={COLORS.muted}
+                autoCorrect={false}
+              />
+            </View>
+
+            {/* Actions */}
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnCancel]}
+                onPress={() => setEditModalVisible(false)}
+                disabled={savingProfile}
+              >
+                <Text style={styles.modalBtnCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnOk]}
+                onPress={handleSaveProfile}
+                disabled={savingProfile}
+              >
+                {savingProfile ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.modalBtnOkText}>Save</Text>
+                )}
               </TouchableOpacity>
             </View>
           </Animated.View>
@@ -697,5 +843,82 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontFamily: FONTS.bold,
     fontSize: FONT_SIZES.sm,
+  },
+  editProfileTextBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: `${COLORS.primary}15`,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: RADIUS.md,
+    marginTop: 6,
+  },
+  editProfileText: {
+    color: COLORS.primary,
+    fontSize: FONT_SIZES.xs,
+    fontFamily: FONTS.semiBold,
+  },
+  editProfileModalContent: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.xl,
+    width: '100%',
+    maxWidth: 340,
+    alignItems: 'center',
+    gap: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.5,
+    shadowRadius: 15,
+    shadowOffset: { width: 0, height: 10 },
+  },
+  editAvatarWrapper: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    position: 'relative',
+  },
+  editAvatarImg: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+  },
+  editAvatarOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: COLORS.primary,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.surface,
+  },
+  fieldContainer: {
+    width: '100%',
+    gap: 8,
+  },
+  fieldLabel: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.muted,
+    fontFamily: FONTS.semiBold,
+  },
+  textInput: {
+    width: '100%',
+    height: 48,
+    backgroundColor: COLORS.surface2,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: SPACING.base,
+    color: COLORS.foreground,
+    fontFamily: FONTS.medium,
+    fontSize: FONT_SIZES.base,
   },
 });

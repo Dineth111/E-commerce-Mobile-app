@@ -14,6 +14,7 @@ interface AuthState {
   // Actions
   initializeSupabaseAuth: () => void;
   updateProfile: (updates: Partial<User>) => void;
+  updateUserProfile: (name: string, avatarUrl: string | null) => Promise<void>;
   setOnboarded: () => void;
   setQuizCompleted: () => void;
   logout: () => Promise<void>;
@@ -61,6 +62,35 @@ export const useAuthStore = create<AuthState>()(
         set((state) => ({
           user: state.user ? { ...state.user, ...updates } : null,
         })),
+
+      updateUserProfile: async (name, avatarUrl) => {
+        const session = get().session;
+        if (!session || !session.user) throw new Error('Not authenticated');
+
+        // 1. Update auth user metadata
+        const { error: authError } = await supabase.auth.updateUser({
+          data: { full_name: name, avatar_url: avatarUrl }
+        });
+        if (authError) throw authError;
+
+        // 2. Update profiles table
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({
+            full_name: name,
+            avatar_url: avatarUrl
+          })
+          .eq('id', session.user.id);
+
+        if (profileError) {
+          console.warn('Profiles table update failed:', profileError.message);
+        }
+
+        // 3. Update local state
+        set((state) => ({
+          user: state.user ? { ...state.user, name, avatar: avatarUrl || undefined } : null,
+        }));
+      },
 
       setOnboarded: () => set({ isOnboarded: true }),
 
