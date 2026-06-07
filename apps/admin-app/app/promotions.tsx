@@ -372,11 +372,7 @@ export default function PromotionsScreen() {
               {loadingProducts ? (
                 <ActivityIndicator color={Colors.accent} style={{ marginVertical: 10 }} />
               ) : (
-                <ScrollView 
-                  horizontal 
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.horizontalSelector}
-                >
+                <View style={styles.gridSelector}>
                   <TouchableOpacity
                     style={[
                       styles.productSelectorCard,
@@ -420,7 +416,7 @@ export default function PromotionsScreen() {
                       </TouchableOpacity>
                     );
                   })}
-                </ScrollView>
+                </View>
               )}
 
               <View style={styles.modalBtns}>
@@ -531,7 +527,13 @@ const styles = StyleSheet.create({
   modalScrollContent: { paddingBottom: 20 },
   rowInputs: { flexDirection: 'row', gap: 12 },
   textAreaInput: { height: 80, textAlignVertical: 'top', paddingTop: 10, marginBottom: 6 },
-  horizontalSelector: { paddingVertical: 10, gap: 10 },
+  gridSelector: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    paddingVertical: 10,
+    justifyContent: 'flex-start',
+  },
   productSelectorCard: {
     width: 100,
     backgroundColor: Colors.surface2,
@@ -541,7 +543,6 @@ const styles = StyleSheet.create({
     padding: Spacing.sm,
     alignItems: 'center',
     position: 'relative',
-    marginRight: 10,
   },
   productSelectorCardActive: {
     borderColor: Colors.accent,

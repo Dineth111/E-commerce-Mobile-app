@@ -10,3 +10,6 @@ ALTER TABLE promotions ADD COLUMN IF NOT EXISTS description TEXT DEFAULT '';
 
 -- 2. Add product_id column linking to products table
 ALTER TABLE promotions ADD COLUMN IF NOT EXISTS product_id UUID REFERENCES products(id) ON DELETE SET NULL;
+
+-- 3. Enable Supabase Realtime replication for promotions table
+ALTER PUBLICATION supabase_realtime ADD TABLE promotions;

@@ -7,8 +7,8 @@ import { Colors, Spacing, Radius } from '@/constants/theme';
 
 const MENU_ITEMS = [
   { label: 'AI Settings', icon: 'sparkles-outline', route: '/ai-settings', color: Colors.blue },
-  { label: 'Analytics', icon: 'analytics-outline', route: '/analytics', color: Colors.green },
   { label: 'Promotions', icon: 'pricetag-outline', route: '/promotions', color: Colors.amber },
+  { label: 'Reviews Moderation', icon: 'star-outline', route: '/reviews-moderation', color: Colors.purple },
 ];
 
 export default function MoreScreen() {

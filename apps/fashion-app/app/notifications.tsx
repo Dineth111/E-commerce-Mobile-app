@@ -43,7 +43,7 @@ export default function NotificationsScreen() {
       if (notif.data?.productId) {
         router.push(`/product/${notif.data.productId}`);
       } else {
-        router.push('/(tabs)/index');
+        router.push('/(tabs)/search');
       }
     }
   };

@@ -86,6 +86,10 @@ export default function RootLayout() {
               options={{ presentation: 'card', animation: 'slide_from_right' }}
             />
             <Stack.Screen
+              name="order/[id]"
+              options={{ presentation: 'card', animation: 'slide_from_right' }}
+            />
+            <Stack.Screen
               name="notifications"
               options={{ presentation: 'card', animation: 'slide_from_right' }}
             />

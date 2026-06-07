@@ -32,6 +32,7 @@ export const Colors = {
   // Role colors
   adminRole: '#C0392B',
   customerRole: '#378ADD',
+  purple: '#8B5CF6',
 };
 
 export const statusColor: Record<string, string> = {

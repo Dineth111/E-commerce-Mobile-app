@@ -53,7 +53,14 @@ const CATEGORY_IMAGES: Record<string, string> = {
   formal: 'https://images.unsplash.com/photo-1487309078313-be80b3aa1b42?w=500&q=80',
 };
 
-const POPULAR_VIBES = ['Minimalist', 'Streetwear', 'Bohemian', 'Vintage', 'Formal Suit', 'Athleisure'];
+const POPULAR_VIBES = [
+  { label: 'Minimalist', emoji: '🕶️' },
+  { label: 'Streetwear', emoji: '🛹' },
+  { label: 'Bohemian', emoji: '🌸' },
+  { label: 'Vintage', emoji: '🕰️' },
+  { label: 'Formal Suit', emoji: '👔' },
+  { label: 'Athleisure', emoji: '👟' }
+];
 
 export default function SearchScreen() {
   const [query, setQuery] = useState('');
@@ -237,30 +244,47 @@ export default function SearchScreen() {
             {/* Visual Categories Grid */}
             <Text style={styles.sectionTitle}>✦ Explore Categories</Text>
             <View style={styles.categoryGrid}>
-              {FILTER_CATEGORIES.filter(c => c.id !== 'all').map((cat) => (
-                <TouchableOpacity
-                  key={cat.id}
-                  style={styles.gridCatCard}
-                  onPress={async () => {
-                    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    setActiveCategory(cat.id);
-                  }}
-                >
-                  <Image
-                    source={{ uri: CATEGORY_IMAGES[cat.id] }}
-                    style={StyleSheet.absoluteFillObject}
-                    contentFit="cover"
-                  />
-                  <LinearGradient
-                    colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.85)']}
-                    style={StyleSheet.absoluteFillObject}
-                  />
-                  <View style={styles.gridCatCardOverlay}>
-                    <Text style={styles.gridCatCardText}>{cat.label}</Text>
-                    <Ionicons name="arrow-forward-circle" size={18} color="#fff" />
-                  </View>
-                </TouchableOpacity>
-              ))}
+              {FILTER_CATEGORIES.filter(c => c.id !== 'all').map((cat, index) => {
+                const isWide = index === 0 || index === 5 || index === 6;
+                const cardWidth = isWide ? SCREEN_WIDTH - 32 : (SCREEN_WIDTH - 44) / 2;
+                const cardHeight = isWide ? 130 : 160;
+                return (
+                  <TouchableOpacity
+                    key={cat.id}
+                    style={[styles.gridCatCard, { width: cardWidth, height: cardHeight }]}
+                    onPress={async () => {
+                      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      setActiveCategory(cat.id);
+                    }}
+                  >
+                    <Image
+                      source={{ uri: CATEGORY_IMAGES[cat.id] }}
+                      style={StyleSheet.absoluteFillObject}
+                      contentFit="cover"
+                    />
+                    <LinearGradient
+                      colors={['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.85)']}
+                      style={StyleSheet.absoluteFillObject}
+                    />
+                    <View style={styles.gridCatCardOverlay}>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={styles.gridCatCardText}>{cat.label}</Text>
+                        <Text style={styles.gridCatCardSubtext}>
+                          {cat.id === 'dresses' && 'Elegant and flowing silhouettes'}
+                          {cat.id === 'tops' && 'Everyday luxury and statement tops'}
+                          {cat.id === 'bottoms' && 'Tailored trousers and denim'}
+                          {cat.id === 'outerwear' && 'Coats, jackets, and blazers'}
+                          {cat.id === 'shoes' && 'Premium leather and sneakers'}
+                          {cat.id === 'accessories' && 'Gold jewelry and leather bags'}
+                          {cat.id === 'activewear' && 'High-performance athletic sets'}
+                          {cat.id === 'formal' && 'Elegant tailoring and eveningwear'}
+                        </Text>
+                      </View>
+                      <Ionicons name="arrow-forward-circle" size={24} color="#fff" />
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
             {/* Popular Vibes / Tags */}
@@ -268,14 +292,15 @@ export default function SearchScreen() {
             <View style={styles.vibesContainer}>
               {POPULAR_VIBES.map((vibe) => (
                 <TouchableOpacity
-                  key={vibe}
+                  key={vibe.label}
                   style={styles.vibePill}
                   onPress={async () => {
                     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    selectQuery(vibe);
+                    selectQuery(vibe.label);
                   }}
+                  activeOpacity={0.8}
                 >
-                  <Text style={styles.vibeText}>#{vibe.toLowerCase()}</Text>
+                  <Text style={styles.vibeText}>{vibe.emoji} #{vibe.label.toLowerCase()}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -315,43 +340,48 @@ export default function SearchScreen() {
               )}
             </Animated.View>
 
-            <FlashList
-              data={isLoading ? Array.from({ length: 6 }) : (data?.products ?? [])}
-              numColumns={2}
-              masonry
-              estimatedItemSize={280}
-              contentContainerStyle={styles.grid}
-              renderItem={({ item, index }) => {
-                if (isLoading) {
-                  return (
-                    <View style={styles.gridItem}>
-                      <ProductCardSkeleton />
-                    </View>
-                  );
-                }
-                const itemIndex = index ?? 0;
-                // Alternate aspect ratios to give a beautiful magazine staggered feel
-                const aspect = itemIndex % 3 === 0 ? 1.2 : itemIndex % 3 === 1 ? 1.45 : 1.32;
-                return (
-                  <View style={styles.gridItem}>
-                    <ProductCard
-                      product={item as any}
-                      width={(SCREEN_WIDTH - 44) / 2}
-                      aspectRatio={aspect}
-                    />
-                  </View>
-                );
-              }}
-              ListEmptyComponent={
-                !isLoading ? (
-                  <View style={styles.noResults}>
-                    <Ionicons name="sad-outline" size={48} color={COLORS.muted} />
-                    <Text style={styles.noResultsText}>No results found</Text>
-                    <Text style={styles.noResultsSubtext}>Try adjusting your keywords or category filters</Text>
-                  </View>
-                ) : null
-              }
-            />
+            {(() => {
+              const ListComponent = FlashList as any;
+              return (
+                <ListComponent
+                  data={isLoading ? Array.from({ length: 6 }) : (data?.products ?? [])}
+                  numColumns={2}
+                  masonry
+                  estimatedItemSize={280}
+                  contentContainerStyle={styles.grid}
+                  renderItem={({ item, index }: any) => {
+                    if (isLoading) {
+                      return (
+                        <View style={styles.gridItem}>
+                          <ProductCardSkeleton />
+                        </View>
+                      );
+                    }
+                    const itemIndex = index ?? 0;
+                    // Alternate aspect ratios to give a beautiful magazine staggered feel
+                    const aspect = itemIndex % 3 === 0 ? 1.2 : itemIndex % 3 === 1 ? 1.45 : 1.32;
+                    return (
+                      <View style={styles.gridItem}>
+                        <ProductCard
+                          product={item as any}
+                          width={(SCREEN_WIDTH - 44) / 2}
+                          aspectRatio={aspect}
+                        />
+                      </View>
+                    );
+                  }}
+                  ListEmptyComponent={
+                    !isLoading ? (
+                      <View style={styles.noResults}>
+                        <Ionicons name="sad-outline" size={48} color={COLORS.muted} />
+                        <Text style={styles.noResultsText}>No results found</Text>
+                        <Text style={styles.noResultsSubtext}>Try adjusting your keywords or category filters</Text>
+                      </View>
+                    ) : null
+                  }
+                />
+              );
+            })()}
           </View>
         )}
 
@@ -470,11 +500,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.xl,
-    paddingHorizontal: 14,
-    gap: 8,
-    borderWidth: 1,
+    paddingHorizontal: 16,
+    gap: 10,
+    borderWidth: 1.5,
     borderColor: COLORS.border,
-    height: 44,
+    height: 48,
     ...SHADOWS.sm,
   },
   input: {
@@ -484,27 +514,35 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.regular,
   },
   visualBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: `${COLORS.primary}15`,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: `${COLORS.primary}30`,
+    borderWidth: 1.5,
+    borderColor: `${COLORS.primary}35`,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
   },
   visualBtnLoading: { opacity: 0.5 },
   filterBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: COLORS.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: COLORS.border,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
   },
-  filterBtnActive: { borderColor: COLORS.primary, backgroundColor: `${COLORS.primary}10` },
+  filterBtnActive: { borderColor: COLORS.primary, backgroundColor: `${COLORS.primary}15` },
   visualResult: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -582,19 +620,19 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   gridCatCard: {
-    width: (SCREEN_WIDTH - 32 - 12) / 2,
-    height: 100,
     borderRadius: RADIUS.lg,
     overflow: 'hidden',
     justifyContent: 'flex-end',
-    ...SHADOWS.sm,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    ...SHADOWS.md,
   },
   gridCatCardOverlay: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    padding: SPACING.sm,
+    padding: SPACING.md,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -603,6 +641,12 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: FONT_SIZES.base,
     fontFamily: FONTS.bold,
+  },
+  gridCatCardSubtext: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 10,
+    fontFamily: FONTS.regular,
+    marginTop: 2,
   },
   
   vibesContainer: {
@@ -615,8 +659,12 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: RADIUS.full,
     backgroundColor: COLORS.surface,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: COLORS.border,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
   },
   vibeText: {
     fontSize: FONT_SIZES.sm,

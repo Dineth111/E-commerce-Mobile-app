@@ -7,6 +7,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { supabase, getUserRole } from '@/lib/supabase';
 import { Colors } from '@/constants/theme';
+import { useSupabaseRealtime } from '@/hooks/useSupabaseRealtime';
 
 const queryClient = new QueryClient();
 
@@ -14,6 +15,9 @@ function AuthGuard() {
   const router = useRouter();
   const [checking, setChecking] = useState(true);
   const [denied, setDenied] = useState(false);
+
+  // Initialize Realtime notifications listener
+  useSupabaseRealtime();
 
   useEffect(() => {
     (async () => {
@@ -85,9 +89,9 @@ function AuthGuard() {
       <Stack.Screen name="login" />
       <Stack.Screen name="product/[id]" />
       <Stack.Screen name="order/[id]" />
-      <Stack.Screen name="user/[id]" />
+      <Stack.Screen name="reviews-moderation" />
+      <Stack.Screen name="notifications" />
       <Stack.Screen name="ai-settings" />
-      <Stack.Screen name="analytics" />
       <Stack.Screen name="promotions" />
     </Stack>
   );

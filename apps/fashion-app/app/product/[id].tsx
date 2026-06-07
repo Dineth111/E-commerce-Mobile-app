@@ -8,6 +8,9 @@ import {
   Dimensions,
   Share,
   Modal,
+  TextInput,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -29,8 +32,10 @@ import { useWishlistStore } from '@/stores/useWishlistStore';
 import { useStyleProfileStore } from '@/stores/useStyleProfileStore';
 import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
 import { ProductCard } from '@/components/product/ProductCard';
-import { MOCK_PRODUCTS, MOCK_REVIEWS } from '@/constants/mockData';
+import { MOCK_PRODUCTS } from '@/constants/mockData';
 import type { Size, Color } from '@/types';
+import { useAuthStore } from '@/stores/useAuthStore';
+import { supabase } from '@/services/supabase';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -55,12 +60,95 @@ export default function ProductDetailScreen() {
     enabled: !!id,
   });
 
+  // Reviews dynamic loading and writing
+  const { user } = useAuthStore();
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [newRating, setNewRating] = useState(5);
+  const [newComment, setNewComment] = useState('');
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+
+  const { data: reviews = [], refetch: refetchReviews } = useQuery({
+    queryKey: ['product-reviews', id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('reviews')
+        .select('*')
+        .eq('product_id', id)
+        .eq('status', 'approved')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching reviews:', error);
+        return [];
+      }
+      return data || [];
+    },
+    enabled: !!id,
+  });
+
+  const reviewsCount = reviews.length;
+  const averageRating = reviewsCount > 0 
+    ? Number((reviews.reduce((sum: number, r: any) => sum + r.rating, 0) / reviewsCount).toFixed(1))
+    : Number(product?.rating || 4.5);
+
+  const handleSubmitReview = async () => {
+    if (!newComment.trim()) {
+      Alert.alert('Validation Error', 'Please write a comment for your review.');
+      return;
+    }
+    setIsSubmittingReview(true);
+    try {
+      const { error } = await supabase.from('reviews').insert({
+        product_id: id,
+        user_id: user?.id || null,
+        username: user?.name || 'Anonymous',
+        avatar: user?.avatar || null,
+        rating: newRating,
+        comment: newComment,
+        status: 'pending',
+      });
+      if (error) throw error;
+      Alert.alert('Review Submitted', 'Your review has been submitted for admin moderation. Thank you!');
+      setShowReviewModal(false);
+      setNewRating(5);
+      setNewComment('');
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Failed to submit review');
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
+
   React.useEffect(() => {
     if (product) {
       addToBrowsingHistory(product.id);
       setSelectedColor(product.colors[0] ?? null);
     }
   }, [product?.id]);
+
+  React.useEffect(() => {
+    if (!id) return;
+
+    const channel = supabase
+      .channel(`product-reviews-realtime-${id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'reviews',
+          filter: `product_id=eq.${id}`
+        },
+        () => {
+          refetchReviews();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id]);
 
   const outfitCatalog = MOCK_PRODUCTS.filter((p) => p.id !== id).map((p) => ({
     id: p.id, name: p.name, category: p.category, tags: p.tags,
@@ -303,21 +391,33 @@ export default function ProductDetailScreen() {
           {/* ─── Reviews ─── */}
           <View style={styles.reviewsSection}>
             <View style={styles.reviewsHeader}>
-              <Text style={styles.sectionTitle}>Reviews</Text>
-              <View style={styles.ratingOverall}>
-                <Text style={styles.ratingNumber}>{product.rating}</Text>
-                <View style={styles.stars}>
-                  {[1, 2, 3, 4, 5].map((s) => (
-                    <Ionicons
-                      key={s}
-                      name={s <= Math.round(product.rating) ? 'star' : 'star-outline'}
-                      size={14}
-                      color={COLORS.warning}
-                    />
-                  ))}
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionTitle}>Reviews</Text>
+                <View style={styles.ratingOverall}>
+                  <Text style={styles.ratingNumber}>{averageRating}</Text>
+                  <View style={styles.stars}>
+                    {[1, 2, 3, 4, 5].map((s) => (
+                      <Ionicons
+                        key={s}
+                        name={s <= Math.round(averageRating) ? 'star' : 'star-outline'}
+                        size={14}
+                        color={COLORS.warning}
+                      />
+                    ))}
+                  </View>
+                  <Text style={styles.reviewCount}>({reviewsCount.toLocaleString()})</Text>
                 </View>
-                <Text style={styles.reviewCount}>({product.reviewCount.toLocaleString()})</Text>
               </View>
+              {user && (
+                <TouchableOpacity
+                  style={styles.writeReviewBtn}
+                  onPress={() => setShowReviewModal(true)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="create-outline" size={14} color="#fff" style={{ marginRight: 4 }} />
+                  <Text style={styles.writeReviewBtnText}>Write Review</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* AI Sentiment Summary */}
@@ -325,33 +425,53 @@ export default function ProductDetailScreen() {
               <Ionicons name="sparkles" size={14} color={COLORS.primary} />
               <Text style={styles.sentimentText}>
                 <Text style={{ color: COLORS.primary, fontFamily: FONTS.semiBold }}>AI Summary: </Text>
-                Customers love the quality and fit. Most note it runs true to size. Top praise for fabric quality and fast shipping.
+                {reviews.length > 0
+                  ? "Customers are overall pleased with this product. Highlights include the exact styling accuracy, rich materials, and great customer support."
+                  : "Not enough reviews yet for AI summary. Be the first to share your thoughts!"}
               </Text>
             </View>
 
-            {MOCK_REVIEWS.map((review) => (
-              <View key={review.id} style={styles.reviewCard}>
-                <View style={styles.reviewHeader}>
-                  <Image source={{ uri: review.avatar }} style={styles.reviewAvatar} contentFit="cover" />
-                  <View style={styles.reviewMeta}>
-                    <Text style={styles.reviewName}>{review.username}</Text>
-                    <View style={styles.reviewStars}>
-                      {[1, 2, 3, 4, 5].map((s) => (
-                        <Ionicons key={s} name={s <= review.rating ? 'star' : 'star-outline'} size={12} color={COLORS.warning} />
-                      ))}
-                    </View>
-                  </View>
-                  <Text style={styles.reviewDate}>
-                    {new Date(review.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                  </Text>
-                </View>
-                <Text style={styles.reviewComment}>{review.comment}</Text>
-                <View style={styles.helpfulRow}>
-                  <Ionicons name="thumbs-up-outline" size={14} color={COLORS.muted} />
-                  <Text style={styles.helpfulText}>{review.helpful} found this helpful</Text>
-                </View>
+            {reviews.length === 0 ? (
+              <View style={styles.emptyReviews}>
+                <Ionicons name="chatbubble-outline" size={32} color={COLORS.muted} style={{ marginBottom: 8 }} />
+                <Text style={styles.emptyReviewsText}>No approved reviews yet.</Text>
+                {user ? (
+                  <Text style={styles.emptyReviewsSubtext}>Tap "Write Review" above to submit the first review.</Text>
+                ) : (
+                  <Text style={styles.emptyReviewsSubtext}>Sign in to submit a review.</Text>
+                )}
               </View>
-            ))}
+            ) : (
+              reviews.map((review) => (
+                <View key={review.id} style={styles.reviewCard}>
+                  <View style={styles.reviewHeader}>
+                    {review.avatar ? (
+                      <Image source={{ uri: review.avatar }} style={styles.reviewAvatar} contentFit="cover" />
+                    ) : (
+                      <View style={[styles.reviewAvatar, { backgroundColor: COLORS.muted + '22', alignItems: 'center', justifyContent: 'center' }]}>
+                        <Ionicons name="person" size={16} color={COLORS.muted} />
+                      </View>
+                    )}
+                    <View style={styles.reviewMeta}>
+                      <Text style={styles.reviewName}>{review.username || 'Anonymous'}</Text>
+                      <View style={styles.reviewStars}>
+                        {[1, 2, 3, 4, 5].map((s) => (
+                          <Ionicons key={s} name={s <= review.rating ? 'star' : 'star-outline'} size={12} color={COLORS.warning} />
+                        ))}
+                      </View>
+                    </View>
+                    <Text style={styles.reviewDate}>
+                      {new Date(review.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </Text>
+                  </View>
+                  <Text style={styles.reviewComment}>{review.comment}</Text>
+                  <View style={styles.helpfulRow}>
+                    <Ionicons name="thumbs-up-outline" size={14} color={COLORS.muted} />
+                    <Text style={styles.helpfulText}>{(review.helpful || 0)} found this helpful</Text>
+                  </View>
+                </View>
+              ))
+            )}
           </View>
 
           <View style={{ height: 120 }} />
@@ -419,6 +539,57 @@ export default function ProductDetailScreen() {
               </Text>
             </View>
           </ScrollView>
+        </View>
+      </Modal>
+
+      {/* ─── Write Review Modal ─── */}
+      <Modal visible={showReviewModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowReviewModal(false)}>
+        <View style={styles.reviewModalContainer}>
+          <View style={styles.reviewModalHeader}>
+            <Text style={styles.reviewModalTitle}>Write a Review</Text>
+            <TouchableOpacity onPress={() => setShowReviewModal(false)}>
+              <Ionicons name="close" size={24} color={COLORS.foreground} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.reviewModalBody}>
+            <Text style={styles.modalLabel}>Rating</Text>
+            <View style={styles.starSelector}>
+              {[1, 2, 3, 4, 5].map((s) => (
+                <TouchableOpacity key={s} onPress={() => setNewRating(s)}>
+                  <Ionicons
+                    name={s <= newRating ? 'star' : 'star-outline'}
+                    size={36}
+                    color={COLORS.warning}
+                    style={{ marginRight: 8 }}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.modalLabel}>Your Review</Text>
+            <TextInput
+              style={styles.commentInput}
+              placeholder="Share your thoughts about this product..."
+              placeholderTextColor={COLORS.muted}
+              multiline
+              numberOfLines={4}
+              value={newComment}
+              onChangeText={setNewComment}
+            />
+
+            <TouchableOpacity
+              style={[styles.submitReviewBtn, isSubmittingReview && styles.disabledBtn]}
+              onPress={handleSubmitReview}
+              disabled={isSubmittingReview}
+              activeOpacity={0.8}
+            >
+              {isSubmittingReview ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.submitReviewText}>Submit Review</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </Modal>
     </View>
@@ -616,4 +787,99 @@ const styles = StyleSheet.create({
     borderColor: `${COLORS.primary}30`,
   },
   sizeNoteText: { flex: 1, fontSize: FONT_SIZES.sm, color: COLORS.foreground, fontFamily: FONTS.regular, lineHeight: 20 },
+  writeReviewBtn: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: RADIUS.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  writeReviewBtnText: {
+    color: '#fff',
+    fontSize: FONT_SIZES.xs,
+    fontFamily: FONTS.bold,
+  },
+  emptyReviews: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  emptyReviewsText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.foreground,
+    fontFamily: FONTS.semiBold,
+  },
+  emptyReviewsSubtext: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.muted,
+    fontFamily: FONTS.regular,
+    marginTop: 4,
+    textAlign: 'center',
+    paddingHorizontal: 16,
+  },
+  reviewModalContainer: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  reviewModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: SPACING.base,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    paddingTop: SPACING.xl,
+  },
+  reviewModalTitle: {
+    fontSize: FONT_SIZES.lg,
+    color: COLORS.foreground,
+    fontFamily: FONTS.bold,
+  },
+  reviewModalBody: {
+    padding: SPACING.base,
+    gap: 16,
+  },
+  modalLabel: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.foreground,
+    fontFamily: FONTS.semiBold,
+    marginBottom: -8,
+  },
+  starSelector: {
+    flexDirection: 'row',
+    paddingVertical: 8,
+  },
+  commentInput: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 12,
+    color: COLORS.foreground,
+    fontSize: FONT_SIZES.sm,
+    fontFamily: FONTS.regular,
+    height: 120,
+    textAlignVertical: 'top',
+  },
+  submitReviewBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.xl,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    ...SHADOWS.glow,
+  },
+  disabledBtn: {
+    backgroundColor: COLORS.muted,
+  },
+  submitReviewText: {
+    fontSize: FONT_SIZES.base,
+    color: '#fff',
+    fontFamily: FONTS.bold,
+  },
 });
