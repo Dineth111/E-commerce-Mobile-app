@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ScrollView, View, Text, FlatList, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { ScrollView, View, Text, FlatList, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Platform, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -18,6 +18,7 @@ const statusColor: Record<string, string> = {
 
 export default function DashboardScreen() {
   const router = useRouter();
+  const [showSignOutModal, setShowSignOutModal] = useState(false);
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-LK', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const unreadCount = useNotificationStore((state) => state.notifications.filter((n) => !n.read).length);
@@ -52,16 +53,21 @@ export default function DashboardScreen() {
     }
   });
 
-  const handleSignOut = async () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: async () => {
-        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-        await AsyncStorage.removeItem('mock_admin');
-        await supabase.auth.signOut();
-        router.replace('/login');
-      }}
-    ]);
+  const performSignOut = async () => {
+    setShowSignOutModal(false);
+    await supabase.auth.signOut();
+    router.replace('/login');
+  };
+
+  const handleSignOut = () => {
+    if (Platform.OS !== 'web') {
+      Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign Out', style: 'destructive', onPress: performSignOut }
+      ]);
+    } else {
+      setShowSignOutModal(true);
+    }
   };
 
   const dashboardStats = [
@@ -152,6 +158,27 @@ export default function DashboardScreen() {
           </>
         )}
       </ScrollView>
+
+      {/* Custom Sign Out Confirmation Modal */}
+      <Modal transparent animationType="fade" visible={showSignOutModal} onRequestClose={() => setShowSignOutModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalIconWrap}>
+              <Ionicons name="log-out-outline" size={32} color={Colors.cancelled} />
+            </View>
+            <Text style={styles.modalTitle}>Sign Out</Text>
+            <Text style={styles.modalSubtitle}>Are you sure you want to sign out of the admin panel?</Text>
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalCancel} onPress={() => setShowSignOutModal(false)} activeOpacity={0.8}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalConfirm} onPress={performSignOut} activeOpacity={0.8}>
+                <Text style={styles.modalConfirmText}>Sign Out</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -226,4 +253,15 @@ const styles = StyleSheet.create({
   orderTotal: { fontSize: 14, fontWeight: '700', color: Colors.text },
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: Radius.full },
   badgeText: { fontSize: 10, fontWeight: '700' },
+  // Sign out modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  modalCard: { backgroundColor: Colors.surface, borderRadius: Radius.xl, padding: 28, width: '100%', maxWidth: 380, borderWidth: 1, borderColor: Colors.border, alignItems: 'center' },
+  modalIconWrap: { width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.cancelled + '22', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: Colors.text, marginBottom: 8 },
+  modalSubtitle: { fontSize: 14, color: Colors.textMuted, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+  modalActions: { flexDirection: 'row', gap: 12, width: '100%' },
+  modalCancel: { flex: 1, paddingVertical: 14, borderRadius: Radius.lg, backgroundColor: Colors.bg, borderWidth: 1, borderColor: Colors.border, alignItems: 'center' },
+  modalCancelText: { fontSize: 15, fontWeight: '700', color: Colors.text },
+  modalConfirm: { flex: 1, paddingVertical: 14, borderRadius: Radius.lg, backgroundColor: Colors.cancelled, alignItems: 'center' },
+  modalConfirmText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });
