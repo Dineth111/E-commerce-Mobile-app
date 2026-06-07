@@ -59,11 +59,8 @@ export default function RootLayout() {
     const inAuthGroup = segments[0] === '(auth)';
 
     if (!user && !inAuthGroup) {
-      // Redirect unauthenticated users to login
       router.replace('/(auth)/login');
     } else if (user && inAuthGroup) {
-      // Redirect authenticated users away from login
-      // If not onboarded, go there, otherwise go to tabs
       if (!isOnboarded) {
         router.replace('/onboarding');
       } else {
@@ -86,6 +83,10 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" />
             <Stack.Screen
               name="product/[id]"
+              options={{ presentation: 'card', animation: 'slide_from_right' }}
+            />
+            <Stack.Screen
+              name="notifications"
               options={{ presentation: 'card', animation: 'slide_from_right' }}
             />
           </Stack>

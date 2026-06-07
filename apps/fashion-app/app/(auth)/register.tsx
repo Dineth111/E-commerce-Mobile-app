@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, ImageBackground } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { supabase } from '@/services/supabase';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
+
+const BG_IMAGE = 'https://images.unsplash.com/photo-1445205170230-053b83016050?q=80&w=1000&auto=format&fit=crop';
 
 export default function RegisterScreen() {
   const [name, setName] = useState('');
@@ -40,79 +42,90 @@ export default function RegisterScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-dark">
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1 justify-center px-6"
-      >
-        <View className="mb-10 items-center">
-          <View className="w-16 h-16 rounded-full bg-primary/20 items-center justify-center mb-4">
-            <Ionicons name="person-circle" size={32} color={COLORS.primary} />
-          </View>
-          <Text className="text-3xl font-bold text-light mb-2">Create Account</Text>
-          <Text className="text-lightMuted text-center">Sign up to start discovering your style</Text>
-        </View>
-
-        <View className="space-y-4">
-          <View>
-            <Text className="text-lightMuted mb-2 ml-1">Full Name</Text>
-            <TextInput
-              className="w-full bg-surface2 text-light rounded-xl p-4 border border-border"
-              placeholder="Enter your full name"
-              placeholderTextColor={COLORS.muted}
-              value={name}
-              onChangeText={setName}
-              autoCapitalize="words"
-            />
-          </View>
-
-          <View>
-            <Text className="text-lightMuted mb-2 ml-1">Email</Text>
-            <TextInput
-              className="w-full bg-surface2 text-light rounded-xl p-4 border border-border"
-              placeholder="Enter your email"
-              placeholderTextColor={COLORS.muted}
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-          </View>
-
-          <View>
-            <Text className="text-lightMuted mb-2 ml-1">Password</Text>
-            <TextInput
-              className="w-full bg-surface2 text-light rounded-xl p-4 border border-border"
-              placeholder="Create a password"
-              placeholderTextColor={COLORS.muted}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
-          </View>
-
-          <TouchableOpacity 
-            className="w-full bg-primary rounded-xl p-4 items-center mt-6 flex-row justify-center"
-            onPress={handleRegister}
-            disabled={loading}
+    <ImageBackground source={{ uri: BG_IMAGE }} className="flex-1 w-full h-full" resizeMode="cover">
+      <View className="flex-1 bg-black/60">
+        <SafeAreaView className="flex-1">
+          <KeyboardAvoidingView 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            className="flex-1 justify-center px-6"
           >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text className="text-white font-bold text-lg">Sign Up</Text>
-            )}
-          </TouchableOpacity>
-        </View>
+            <View className="mb-6 mt-8 items-center">
+              <Text className="text-4xl font-extrabold text-white tracking-widest uppercase mb-2">Vogue</Text>
+              <Text className="text-white/70 text-center tracking-wider">Join the fashion revolution</Text>
+            </View>
 
-        <View className="flex-row justify-center mt-8">
-          <Text className="text-lightMuted">Already have an account? </Text>
-          <Link href="/(auth)/login" asChild>
-            <TouchableOpacity>
-              <Text className="text-primary font-bold">Sign In</Text>
-            </TouchableOpacity>
-          </Link>
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+            <View className="bg-white/10 rounded-3xl p-6 border border-white/20">
+              <Text className="text-2xl font-bold text-white mb-6 text-center">Create Account</Text>
+
+              <View className="space-y-4">
+                <View>
+                  <View className="flex-row items-center bg-black/40 rounded-xl px-4 h-14 border border-white/10">
+                    <Ionicons name="person-outline" size={20} color="#ccc" className="mr-3" />
+                    <TextInput
+                      className="flex-1 text-white ml-3 text-base h-full"
+                      placeholder="Full Name"
+                      placeholderTextColor="#999"
+                      value={name}
+                      onChangeText={setName}
+                      autoCapitalize="words"
+                    />
+                  </View>
+                </View>
+
+                <View>
+                  <View className="flex-row items-center bg-black/40 rounded-xl px-4 h-14 border border-white/10 mt-4">
+                    <Ionicons name="mail-outline" size={20} color="#ccc" className="mr-3" />
+                    <TextInput
+                      className="flex-1 text-white ml-3 text-base h-full"
+                      placeholder="Email address"
+                      placeholderTextColor="#999"
+                      value={email}
+                      onChangeText={setEmail}
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                    />
+                  </View>
+                </View>
+
+                <View>
+                  <View className="flex-row items-center bg-black/40 rounded-xl px-4 h-14 border border-white/10 mt-4">
+                    <Ionicons name="lock-closed-outline" size={20} color="#ccc" className="mr-3" />
+                    <TextInput
+                      className="flex-1 text-white ml-3 text-base h-full"
+                      placeholder="Create a password"
+                      placeholderTextColor="#999"
+                      value={password}
+                      onChangeText={setPassword}
+                      secureTextEntry
+                    />
+                  </View>
+                </View>
+
+                <TouchableOpacity 
+                  className="w-full bg-primary rounded-xl h-14 items-center mt-8 flex-row justify-center shadow-lg"
+                  onPress={handleRegister}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text className="text-white font-bold text-lg tracking-wide">Sign Up</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              <View className="flex-row justify-center mt-8">
+                <Text className="text-white/60">Already have an account? </Text>
+                <Link href="/(auth)/login" asChild>
+                  <TouchableOpacity>
+                    <Text className="text-primary font-bold">Sign In</Text>
+                  </TouchableOpacity>
+                </Link>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </View>
+    </ImageBackground>
   );
 }

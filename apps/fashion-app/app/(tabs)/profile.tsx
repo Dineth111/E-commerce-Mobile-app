@@ -6,45 +6,46 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 import { COLORS, FONTS, FONT_SIZES, RADIUS, SPACING, SHADOWS } from '@/constants/theme';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useStyleProfileStore } from '@/stores/useStyleProfileStore';
 import { useWishlistStore } from '@/stores/useWishlistStore';
 import { useCartStore } from '@/stores/useCartStore';
 import { ProductCard } from '@/components/product/ProductCard';
-import { MOCK_PRODUCTS } from '@/constants/mockData';
+import { supabase } from '@/services/supabase';
 
-const ORDERS = [
-  {
-    id: 'ORD-001',
-    items: 2,
-    total: 247,
-    status: 'delivered',
-    date: '2025-05-15',
-    image: 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=200&q=80',
-  },
-  {
-    id: 'ORD-002',
-    items: 1,
-    total: 98,
-    status: 'shipped',
-    date: '2025-05-28',
-    image: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=200&q=80',
-  },
-];
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface OrderRow {
+  id: string;
+  status: string;
+  total_amount: number;
+  created_at: string;
+  items: { id: string; name?: string; image?: string }[] | null;
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const STATUS_COLORS: Record<string, string> = {
-  delivered: COLORS.success,
-  shipped: COLORS.info,
-  pending: COLORS.warning,
-  confirmed: COLORS.primary,
+  pending:   '#F59E0B',
+  confirmed: '#3B82F6',
+  shipped:   '#9B59B6',
+  delivered: '#22C55E',
+  cancelled: '#EF4444',
 };
+
+const FALLBACK_ORDER_IMAGE =
+  'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=200&q=80';
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -54,22 +55,44 @@ export default function ProfileScreen() {
   const { totalItems } = useCartStore();
   const [activeTab, setActiveTab] = useState<'wardrobe' | 'orders' | 'profile'>('profile');
 
+  // ── Fetch real orders from Supabase ──────────────────────────────────────
+  const {
+    data: orders = [],
+    isLoading: ordersLoading,
+    isError: ordersError,
+  } = useQuery<OrderRow[]>({
+    queryKey: ['orders', user?.id],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('customer_id', user!.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return (data as OrderRow[]) ?? [];
+    },
+  });
+
+  // ── Tabs ─────────────────────────────────────────────────────────────────
   const PROFILE_TABS = [
-    { id: 'profile', label: 'Style Profile', icon: 'sparkles-outline' },
-    { id: 'wardrobe', label: 'Wardrobe', icon: 'heart-outline' },
-    { id: 'orders', label: 'Orders', icon: 'bag-outline' },
+    { id: 'profile',  label: 'Style Profile', icon: 'sparkles-outline' },
+    { id: 'wardrobe', label: 'Wardrobe',       icon: 'heart-outline'   },
+    { id: 'orders',   label: 'Orders',         icon: 'bag-outline'     },
   ] as const;
 
+  // ── Handlers ─────────────────────────────────────────────────────────────
   const handleLogout = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
-      { 
-        text: 'Sign Out', 
-        style: 'destructive', 
-        onPress: async () => { 
-          await logout(); 
-          // The layout's route protection will handle redirecting to /login automatically
-        } 
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: async () => {
+          await logout();
+          // Route protection in the layout handles the redirect to /login
+        },
       },
     ]);
   };
@@ -81,9 +104,26 @@ export default function ProfileScreen() {
     ]);
   };
 
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
+  /** Returns the first image URL found inside an order's items array, or a fallback. */
+  const getOrderThumbnail = (order: OrderRow): string => {
+    if (Array.isArray(order.items) && order.items.length > 0) {
+      const firstImage = order.items[0]?.image;
+      if (firstImage) return firstImage;
+    }
+    return FALLBACK_ORDER_IMAGE;
+  };
+
+  /** Counts the number of items in an order. */
+  const getItemCount = (order: OrderRow): number =>
+    Array.isArray(order.items) ? order.items.length : 0;
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+
         {/* ─── Profile Header ─── */}
         <Animated.View entering={FadeInDown.duration(400)} style={styles.profileHeader}>
           <View style={styles.avatarWrapper}>
@@ -101,11 +141,12 @@ export default function ProfileScreen() {
 
           {/* Stats */}
           <View style={styles.statsRow}>
-            <StatItem label="Wishlist" value={wishlist.length} />
+            <StatItem label="Wishlist"   value={wishlist.length} />
             <View style={styles.statDivider} />
             <StatItem label="Cart Items" value={totalItems()} />
             <View style={styles.statDivider} />
-            <StatItem label="Orders" value={ORDERS.length} />
+            {/* Real order count — shows 0 while loading */}
+            <StatItem label="Orders" value={ordersLoading ? 0 : orders.length} />
           </View>
         </Animated.View>
 
@@ -130,6 +171,8 @@ export default function ProfileScreen() {
         </View>
 
         {/* ─── Tab Content ─── */}
+
+        {/* ── Style Profile tab ── */}
         {activeTab === 'profile' && (
           <Animated.View entering={FadeInDown.duration(300)} style={styles.section}>
             {/* Style Profile Summary */}
@@ -141,9 +184,9 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
               </View>
 
-              <ProfileRow icon="body-outline" label="Body Type" value={profile.bodyType || 'Not set'} />
-              <ProfileRow icon="color-palette-outline" label="Color Palette" value={profile.colorPalette || 'Not set'} />
-              <ProfileRow icon="wallet-outline" label="Budget" value={profile.budgetRange || 'Not set'} />
+              <ProfileRow icon="body-outline"         label="Body Type"       value={profile.bodyType || 'Not set'} />
+              <ProfileRow icon="color-palette-outline" label="Color Palette"  value={profile.colorPalette || 'Not set'} />
+              <ProfileRow icon="wallet-outline"        label="Budget"         value={profile.budgetRange || 'Not set'} />
               <ProfileRow
                 icon="heart-outline"
                 label="Preferred Styles"
@@ -160,8 +203,8 @@ export default function ProfileScreen() {
             <View style={styles.settingsCard}>
               <Text style={styles.cardTitle}>Settings</Text>
               <SettingsRow icon="notifications-outline" label="Notifications" />
-              <SettingsRow icon="shield-outline" label="Privacy" />
-              <SettingsRow icon="help-circle-outline" label="Help & Support" />
+              <SettingsRow icon="shield-outline"        label="Privacy" />
+              <SettingsRow icon="help-circle-outline"   label="Help & Support" />
               <TouchableOpacity style={[styles.settingsRow, styles.logoutRow]} onPress={handleLogout}>
                 <Ionicons name="log-out-outline" size={20} color={COLORS.error} />
                 <Text style={[styles.settingsLabel, { color: COLORS.error }]}>Sign Out</Text>
@@ -170,6 +213,7 @@ export default function ProfileScreen() {
           </Animated.View>
         )}
 
+        {/* ── Wardrobe tab ── */}
         {activeTab === 'wardrobe' && (
           <Animated.View entering={FadeInDown.duration(300)} style={styles.wardrobeSection}>
             {wishlist.length === 0 ? (
@@ -191,25 +235,77 @@ export default function ProfileScreen() {
           </Animated.View>
         )}
 
+        {/* ── Orders tab ── */}
         {activeTab === 'orders' && (
           <Animated.View entering={FadeInDown.duration(300)} style={styles.section}>
-            {ORDERS.map((order) => (
-              <View key={order.id} style={styles.orderCard}>
-                <Image source={{ uri: order.image }} style={styles.orderImage} contentFit="cover" />
-                <View style={styles.orderInfo}>
-                  <View style={styles.orderTop}>
-                    <Text style={styles.orderId}>{order.id}</Text>
-                    <View style={[styles.orderStatus, { backgroundColor: `${STATUS_COLORS[order.status]}20` }]}>
-                      <Text style={[styles.orderStatusText, { color: STATUS_COLORS[order.status] }]}>
-                        {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={styles.orderDate}>{new Date(order.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
-                  <Text style={styles.orderMeta}>{order.items} item{order.items > 1 ? 's' : ''} · ${order.total}</Text>
-                </View>
+
+            {/* Loading state */}
+            {ordersLoading && (
+              <View style={styles.ordersLoading}>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+                <Text style={styles.ordersLoadingText}>Fetching your orders…</Text>
               </View>
-            ))}
+            )}
+
+            {/* Error state */}
+            {!ordersLoading && ordersError && (
+              <View style={styles.emptyOrders}>
+                <Text style={{ fontSize: 40 }}>😕</Text>
+                <Text style={styles.emptyTitle}>Couldn't load orders</Text>
+                <Text style={styles.emptySubtitle}>Please try again later</Text>
+              </View>
+            )}
+
+            {/* Empty state */}
+            {!ordersLoading && !ordersError && orders.length === 0 && (
+              <View style={styles.emptyOrders}>
+                <Text style={{ fontSize: 48 }}>🛍️</Text>
+                <Text style={styles.emptyTitle}>No orders yet</Text>
+                <Text style={styles.emptySubtitle}>Your orders will appear here</Text>
+                <TouchableOpacity style={styles.shopBtn} onPress={() => router.push('/(tabs)')}>
+                  <Text style={styles.shopBtnText}>Start Shopping</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Real orders list */}
+            {!ordersLoading && !ordersError && orders.map((order) => {
+              const statusColor = STATUS_COLORS[order.status] ?? COLORS.muted;
+              const itemCount   = getItemCount(order);
+              const shortId     = `#${order.id.slice(0, 8).toUpperCase()}`;
+              const thumbnail   = getOrderThumbnail(order);
+
+              return (
+                <View key={order.id} style={styles.orderCard}>
+                  <Image
+                    source={{ uri: thumbnail }}
+                    style={styles.orderImage}
+                    contentFit="cover"
+                  />
+                  <View style={styles.orderInfo}>
+                    <View style={styles.orderTop}>
+                      <Text style={styles.orderId}>{shortId}</Text>
+                      <View style={[styles.orderStatus, { backgroundColor: `${statusColor}20` }]}>
+                        <Text style={[styles.orderStatusText, { color: statusColor }]}>
+                          {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.orderDate}>
+                      {new Date(order.created_at).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}
+                    </Text>
+                    <Text style={styles.orderMeta}>
+                      {itemCount} item{itemCount !== 1 ? 's' : ''} · ${order.total_amount.toFixed(2)}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+
           </Animated.View>
         )}
 
@@ -218,6 +314,8 @@ export default function ProfileScreen() {
     </SafeAreaView>
   );
 }
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function StatItem({ label, value }: { label: string; value: number }) {
   return (
@@ -250,9 +348,13 @@ function SettingsRow({ icon, label }: { icon: string; label: string }) {
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   scroll: { paddingBottom: 32 },
+
+  // ── Header ──
   profileHeader: {
     alignItems: 'center',
     paddingHorizontal: SPACING.base,
@@ -281,8 +383,10 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: COLORS.background,
   },
-  userName: { fontSize: FONT_SIZES.xl, color: COLORS.foreground, fontFamily: FONTS.bold },
-  userEmail: { fontSize: FONT_SIZES.sm, color: COLORS.muted, fontFamily: FONTS.regular },
+  userName:  { fontSize: FONT_SIZES.xl, color: COLORS.foreground, fontFamily: FONTS.bold },
+  userEmail: { fontSize: FONT_SIZES.sm, color: COLORS.muted,      fontFamily: FONTS.regular },
+
+  // ── Stats ──
   statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -294,10 +398,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  statItem: { flex: 1, alignItems: 'center' },
-  statValue: { fontSize: FONT_SIZES.xl, color: COLORS.foreground, fontFamily: FONTS.bold },
-  statLabel: { fontSize: FONT_SIZES.xs, color: COLORS.muted, fontFamily: FONTS.medium },
+  statItem:    { flex: 1, alignItems: 'center' },
+  statValue:   { fontSize: FONT_SIZES.xl, color: COLORS.foreground, fontFamily: FONTS.bold },
+  statLabel:   { fontSize: FONT_SIZES.xs, color: COLORS.muted,      fontFamily: FONTS.medium },
   statDivider: { width: 1, height: 32, backgroundColor: COLORS.border },
+
+  // ── Tabs ──
   tabs: {
     flexDirection: 'row',
     paddingHorizontal: SPACING.base,
@@ -316,9 +422,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  tabActive: { borderColor: COLORS.primary, backgroundColor: `${COLORS.primary}12` },
-  tabLabel: { fontSize: FONT_SIZES.xs, color: COLORS.muted, fontFamily: FONTS.semiBold },
+  tabActive:      { borderColor: COLORS.primary, backgroundColor: `${COLORS.primary}12` },
+  tabLabel:       { fontSize: FONT_SIZES.xs, color: COLORS.muted,    fontFamily: FONTS.semiBold },
   tabLabelActive: { color: COLORS.primary },
+
+  // ── Section / Cards ──
   section: { paddingHorizontal: SPACING.base, gap: 12 },
   profileCard: {
     backgroundColor: COLORS.surface,
@@ -328,9 +436,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   cardTitle: { fontSize: FONT_SIZES.md, color: COLORS.foreground, fontFamily: FONTS.bold },
-  editBtn: { fontSize: FONT_SIZES.sm, color: COLORS.primary, fontFamily: FONTS.semiBold },
+  editBtn:   { fontSize: FONT_SIZES.sm, color: COLORS.primary,    fontFamily: FONTS.semiBold },
   profileRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -339,9 +452,21 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-  profileRowText: { flex: 1 },
-  profileRowLabel: { fontSize: FONT_SIZES.xs, color: COLORS.muted, fontFamily: FONTS.medium, textTransform: 'uppercase', letterSpacing: 0.5 },
-  profileRowValue: { fontSize: FONT_SIZES.sm, color: COLORS.foreground, fontFamily: FONTS.semiBold, marginTop: 2, textTransform: 'capitalize' },
+  profileRowText:  { flex: 1 },
+  profileRowLabel: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.muted,
+    fontFamily: FONTS.medium,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  profileRowValue: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.foreground,
+    fontFamily: FONTS.semiBold,
+    marginTop: 2,
+    textTransform: 'capitalize',
+  },
   settingsCard: {
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.xl,
@@ -358,15 +483,40 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-  logoutRow: { borderBottomWidth: 0 },
+  logoutRow:     { borderBottomWidth: 0 },
   settingsLabel: { fontSize: FONT_SIZES.base, color: COLORS.foreground, fontFamily: FONTS.medium },
+
+  // ── Wardrobe ──
   wardrobeSection: { paddingHorizontal: SPACING.base },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   emptyWardrobe: { alignItems: 'center', paddingTop: SPACING['4xl'], gap: 10 },
-  emptyTitle: { fontSize: FONT_SIZES.lg, color: COLORS.foreground, fontFamily: FONTS.bold },
-  emptySubtitle: { fontSize: FONT_SIZES.sm, color: COLORS.muted, fontFamily: FONTS.regular },
-  shopBtn: { backgroundColor: COLORS.primary, borderRadius: RADIUS.xl, paddingVertical: 12, paddingHorizontal: 28, marginTop: 8 },
+  emptyTitle:    { fontSize: FONT_SIZES.lg, color: COLORS.foreground, fontFamily: FONTS.bold },
+  emptySubtitle: { fontSize: FONT_SIZES.sm, color: COLORS.muted,      fontFamily: FONTS.regular },
+  shopBtn:       {
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.xl,
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+    marginTop: 8,
+  },
   shopBtnText: { fontSize: FONT_SIZES.base, color: '#fff', fontFamily: FONTS.bold },
+
+  // ── Orders ──
+  ordersLoading: {
+    alignItems: 'center',
+    paddingTop: SPACING['4xl'],
+    gap: 12,
+  },
+  ordersLoadingText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.muted,
+    fontFamily: FONTS.medium,
+  },
+  emptyOrders: {
+    alignItems: 'center',
+    paddingTop: SPACING['4xl'],
+    gap: 10,
+  },
   orderCard: {
     flexDirection: 'row',
     backgroundColor: COLORS.surface,
@@ -377,11 +527,21 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   orderImage: { width: 80, height: 90 },
-  orderInfo: { flex: 1, paddingVertical: 12, paddingRight: 12, gap: 4, justifyContent: 'center' },
-  orderTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  orderId: { fontSize: FONT_SIZES.sm, color: COLORS.foreground, fontFamily: FONTS.semiBold },
-  orderStatus: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.full },
+  orderInfo: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingRight: 12,
+    gap: 4,
+    justifyContent: 'center',
+  },
+  orderTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  orderId:         { fontSize: FONT_SIZES.sm, color: COLORS.foreground, fontFamily: FONTS.semiBold },
+  orderStatus:     { paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.full },
   orderStatusText: { fontSize: FONT_SIZES.xs, fontFamily: FONTS.semiBold },
-  orderDate: { fontSize: FONT_SIZES.xs, color: COLORS.muted, fontFamily: FONTS.regular },
-  orderMeta: { fontSize: FONT_SIZES.sm, color: COLORS.foreground, fontFamily: FONTS.medium },
+  orderDate:       { fontSize: FONT_SIZES.xs, color: COLORS.muted,      fontFamily: FONTS.regular },
+  orderMeta:       { fontSize: FONT_SIZES.sm, color: COLORS.foreground, fontFamily: FONTS.medium },
 });

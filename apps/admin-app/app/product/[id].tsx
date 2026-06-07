@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TextInput, TouchableOpacity,
-  StyleSheet, Alert,
+  StyleSheet, Alert, ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Colors, Spacing, Radius } from '@/constants/theme';
+import { supabase } from '@/lib/supabase';
 
 const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
 const COLOR_OPTIONS = [
@@ -22,6 +24,7 @@ const COLOR_OPTIONS = [
 export default function ProductEditorScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const isNew = id === 'new';
 
   const [name, setName] = useState('');
@@ -32,7 +35,33 @@ export default function ProductEditorScreen() {
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
   const [images, setImages] = useState<string[]>([]);
+  const [stock, setStock] = useState('0');
   const [saving, setSaving] = useState(false);
+
+  // Fetch product data if not new
+  const { data: product, isLoading: loadingProduct } = useQuery({
+    queryKey: ['product', id],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('products').select('*').eq('id', id).single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !isNew,
+  });
+
+  useEffect(() => {
+    if (product) {
+      setName(product.name || '');
+      setDescription(product.description || '');
+      setPrice(product.price?.toString() || '');
+      setCategory(product.category || '');
+      setBrand(product.brand || '');
+      setSelectedSizes(product.sizes || []);
+      setSelectedColors(Array.isArray(product.colors) ? product.colors.map((c: any) => c.name || c) : []);
+      setImages(product.images || []);
+      setStock(product.stock_count?.toString() || '0');
+    }
+  }, [product]);
 
   const toggleSize = (s: string) => {
     setSelectedSizes(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
@@ -53,18 +82,73 @@ export default function ProductEditorScreen() {
     }
   };
 
+  const uploadImages = async (imageUris: string[]) => {
+    const uploadedUrls: string[] = [];
+    for (const uri of imageUris) {
+      if (uri.startsWith('http')) {
+        uploadedUrls.push(uri);
+        continue;
+      }
+      try {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        const ext = uri.split('.').pop() || 'jpg';
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+        
+        const { data, error } = await supabase.storage
+          .from('product-images')
+          .upload(fileName, blob, { contentType: `image/${ext}` });
+          
+        if (error) throw error;
+        
+        const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(fileName);
+        uploadedUrls.push(publicUrl);
+      } catch (err) {
+        console.error("Error uploading image:", err);
+      }
+    }
+    return uploadedUrls;
+  };
+
   const handleSave = async () => {
-    if (!name.trim()) {
-      Alert.alert('Error', 'Product name is required');
+    if (!name.trim() || !price.trim()) {
+      Alert.alert('Error', 'Product name and price are required');
       return;
     }
     setSaving(true);
-    // TODO: wire to Supabase
-    await new Promise(r => setTimeout(r, 800));
-    setSaving(false);
-    Alert.alert('Success', `Product ${isNew ? 'created' : 'updated'} successfully`, [
-      { text: 'OK', onPress: () => router.back() }
-    ]);
+    try {
+      const finalImageUrls = await uploadImages(images);
+      const mappedColors = COLOR_OPTIONS.filter(c => selectedColors.includes(c.name));
+      
+      const payload: any = {
+        name,
+        description,
+        price: parseFloat(price) || 0,
+        category,
+        brand,
+        sizes: selectedSizes,
+        colors: mappedColors,
+        images: finalImageUrls,
+        stock_count: parseInt(stock, 10) || 0,
+      };
+
+      if (isNew) {
+        const { error } = await supabase.from('products').insert([payload]);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('products').update(payload).eq('id', id);
+        if (error) throw error;
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      Alert.alert('Success', `Product ${isNew ? 'created' : 'updated'} successfully`, [
+        { text: 'OK', onPress: () => router.back() }
+      ]);
+    } catch (e: any) {
+      Alert.alert('Error saving product', e.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (

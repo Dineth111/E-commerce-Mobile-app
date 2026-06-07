@@ -1,25 +1,13 @@
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Colors, Spacing, Radius } from '@/constants/theme';
+import { supabase } from '@/lib/supabase';
 
 type OrderStatus = 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
-
-const MOCK_ORDER = {
-  id: 'ORD-001',
-  customer: 'Amali Perera',
-  phone: '+94 71 234 5678',
-  address: { street: '12 Galle Road', city: 'Colombo 03', province: 'Western Province', postal_code: '00300' },
-  items: [
-    { product_name: 'Silk Wrap Dress', size: 'M', qty: 1, price: 14500 },
-    { product_name: 'Floral Midi Skirt', size: 'S', qty: 1, price: 7200 },
-  ],
-  total: 21700,
-  status: 'pending' as OrderStatus,
-  promo_code: 'SAVE10',
-  created_at: '2026-06-06T10:30:00Z',
-};
 
 const STATUS_STEPS: OrderStatus[] = ['pending', 'confirmed', 'shipped', 'delivered'];
 const STATUS_NEXT: Record<OrderStatus, OrderStatus | null> = {
@@ -41,23 +29,74 @@ const statusColor: Record<string, string> = {
 export default function OrderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const order = MOCK_ORDER; // In real app, fetch by id
+  const queryClient = useQueryClient();
+
+  const { data: order, isLoading, error } = useQuery({
+    queryKey: ['order', id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*, profiles(full_name)')
+        .eq('id', id)
+        .single();
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async (newStatus: OrderStatus) => {
+      const { error } = await supabase
+        .from('orders')
+        .update({ status: newStatus })
+        .eq('id', id);
+      if (error) throw error;
+      return newStatus;
+    },
+    onSuccess: (newStatus) => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['order', id] });
+      Alert.alert('✅ Success', `Order status updated to ${newStatus}`);
+    },
+    onError: (err) => {
+      Alert.alert('Error', err.message);
+    }
+  });
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={Colors.accent} />
+      </SafeAreaView>
+    );
+  }
+
+  if (error || !order) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={{ color: Colors.textMuted }}>Failed to load order</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 20 }}>
+          <Text style={{ color: Colors.accent }}>Go Back</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
 
   const statusIdx = STATUS_STEPS.indexOf(order.status as any);
-  const nextStatus = STATUS_NEXT[order.status];
+  const nextStatus = STATUS_NEXT[order.status as OrderStatus];
 
   const handleUpdateStatus = () => {
     if (!nextStatus) return;
     Alert.alert('Update Status', `Move order to "${nextStatus}"?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Update', onPress: () => Alert.alert('✅', `Order status updated to ${nextStatus}`) },
+      { text: 'Update', onPress: () => updateMutation.mutate(nextStatus) },
     ]);
   };
 
   const handleCancel = () => {
     Alert.alert('Cancel Order', 'This will cancel the order. Are you sure?', [
       { text: 'No', style: 'cancel' },
-      { text: 'Yes, Cancel', style: 'destructive', onPress: () => Alert.alert('Order cancelled') },
+      { text: 'Yes, Cancel', style: 'destructive', onPress: () => updateMutation.mutate('cancelled') },
     ]);
   };
 
@@ -76,12 +115,12 @@ export default function OrderDetailScreen() {
         {/* Order ID & Date */}
         <View style={styles.topRow}>
           <View>
-            <Text style={styles.orderId}>#{order.id}</Text>
+            <Text style={styles.orderId}>#{order.id?.substring(0, 8).toUpperCase()}</Text>
             <Text style={styles.orderDate}>{new Date(order.created_at).toLocaleDateString()}</Text>
           </View>
-          <View style={[styles.badge, { backgroundColor: statusColor[order.status] + '22' }]}>
-            <Text style={[styles.badgeText, { color: statusColor[order.status] }]}>
-              {order.status.toUpperCase()}
+          <View style={[styles.badge, { backgroundColor: (statusColor[order.status] || Colors.textMuted) + '22' }]}>
+            <Text style={[styles.badgeText, { color: statusColor[order.status] || Colors.textMuted }]}>
+              {(order.status || 'pending').toUpperCase()}
             </Text>
           </View>
         </View>
@@ -116,27 +155,27 @@ export default function OrderDetailScreen() {
 
         {/* Items */}
         <Text style={styles.sectionTitle}>Order Items</Text>
-        {order.items.map((item, i) => (
+        {(order.items || []).map((item: any, i: number) => (
           <View key={i} style={styles.itemRow}>
             <View style={styles.itemIcon}>
               <Ionicons name="shirt-outline" size={22} color={Colors.textMuted} />
             </View>
             <View style={styles.itemInfo}>
-              <Text style={styles.itemName}>{item.product_name}</Text>
-              <Text style={styles.itemMeta}>Size: {item.size} · Qty: {item.qty}</Text>
+              <Text style={styles.itemName}>{item.product_name || 'Product'}</Text>
+              <Text style={styles.itemMeta}>Size: {item.size || 'N/A'} · Qty: {item.qty || 1}</Text>
             </View>
-            <Text style={styles.itemPrice}>LKR {item.price.toLocaleString()}</Text>
+            <Text style={styles.itemPrice}>LKR {(item.price || 0).toLocaleString()}</Text>
           </View>
         ))}
 
         {/* Customer Info */}
         <Text style={styles.sectionTitle}>Customer</Text>
         <View style={styles.card}>
-          <Text style={styles.cardLine}><Text style={styles.cardLabel}>Name: </Text>{order.customer}</Text>
-          <Text style={styles.cardLine}><Text style={styles.cardLabel}>Phone: </Text>{order.phone}</Text>
+          <Text style={styles.cardLine}><Text style={styles.cardLabel}>Name: </Text>{order.profiles?.full_name || 'Guest Customer'}</Text>
+          <Text style={styles.cardLine}><Text style={styles.cardLabel}>Phone: </Text>{order.profiles?.phone || order.phone || 'N/A'}</Text>
           <Text style={styles.cardLine}>
             <Text style={styles.cardLabel}>Address: </Text>
-            {order.address.street}, {order.address.city}, {order.address.province}
+            {order.address?.street || order.shipping_address || 'Address not provided'}
           </Text>
         </View>
 
@@ -145,17 +184,17 @@ export default function OrderDetailScreen() {
         <View style={styles.card}>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Subtotal</Text>
-            <Text style={styles.summaryValue}>LKR {order.total.toLocaleString()}</Text>
+            <Text style={styles.summaryValue}>LKR {(order.total_amount || 0).toLocaleString()}</Text>
           </View>
           {order.promo_code && (
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Promo ({order.promo_code})</Text>
-              <Text style={[styles.summaryValue, { color: Colors.green }]}>-LKR 2,170</Text>
+              <Text style={[styles.summaryValue, { color: Colors.green }]}>- Applied</Text>
             </View>
           )}
           <View style={[styles.summaryRow, styles.summaryTotal]}>
             <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValue}>LKR {order.total.toLocaleString()}</Text>
+            <Text style={styles.totalValue}>LKR {(order.total_amount || 0).toLocaleString()}</Text>
           </View>
         </View>
 

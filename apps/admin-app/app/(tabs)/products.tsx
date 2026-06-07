@@ -63,15 +63,23 @@ export default function ProductsScreen() {
       </View>
 
       {/* Search */}
-      <View style={styles.searchRow}>
-        <Ionicons name="search-outline" size={18} color={Colors.textMuted} style={styles.searchIcon} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search products..."
-          placeholderTextColor={Colors.textMuted}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
+      <View style={styles.searchContainer}>
+        <View style={styles.searchRow}>
+          <Ionicons name="search" size={20} color={Colors.textMuted} style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search products..."
+            placeholderTextColor={Colors.textMuted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            selectionColor={Colors.accent}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearBtn}>
+              <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* Loading & Error States */}
@@ -155,15 +163,18 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 28, fontWeight: '800', color: Colors.text },
   count: { fontSize: 13, color: Colors.textMuted },
+  searchContainer: { paddingHorizontal: Spacing.lg, marginBottom: Spacing.md },
   searchRow: {
     flexDirection: 'row', alignItems: 'center',
-    marginHorizontal: Spacing.lg, marginBottom: Spacing.md,
-    backgroundColor: Colors.surface2, borderRadius: Radius.md,
+    backgroundColor: Colors.surface, borderRadius: Radius.full,
     borderWidth: 1, borderColor: Colors.border,
-    paddingHorizontal: 12, height: 44,
+    paddingHorizontal: 16, height: 48,
+    shadowColor: Colors.text, shadowOpacity: 0.05,
+    shadowRadius: 10, shadowOffset: { width: 0, height: 2 },
   },
-  searchIcon: { marginRight: 8 },
-  searchInput: { flex: 1, color: Colors.text, fontSize: 14 },
+  searchIcon: { marginRight: 10 },
+  searchInput: { flex: 1, color: Colors.text, fontSize: 15, height: '100%' },
+  clearBtn: { padding: 4, marginLeft: 4 },
   list: { paddingHorizontal: Spacing.lg, paddingBottom: 100 },
   productRow: {
     flexDirection: 'row', alignItems: 'center',

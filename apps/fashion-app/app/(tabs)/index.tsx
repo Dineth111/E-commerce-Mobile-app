@@ -23,6 +23,7 @@ import { ProductCard } from '@/components/product/ProductCard';
 import { ProductCardSkeleton } from '@/components/ui/SkeletonLoader';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useWishlistStore } from '@/stores/useWishlistStore';
+import { useNotificationStore } from '@/stores/useNotificationStore';
 import { getTrendingProducts, getNewArrivals } from '@/services/products';
 import { MOCK_STORIES, MOCK_PRODUCTS } from '@/constants/mockData';
 
@@ -32,6 +33,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const { user, isOnboarded } = useAuthStore();
   const { items: wishlistItems } = useWishlistStore();
+  const unreadCount = useNotificationStore((state) => state.unreadCount());
 
   const { data: trending, isLoading: loadingTrending, refetch: refetchTrending } = useQuery({
     queryKey: ['trending'],
@@ -82,9 +84,12 @@ export default function HomeScreen() {
             >
               <Ionicons name="search-outline" size={22} color={COLORS.foreground} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.iconBtn}>
+            <TouchableOpacity 
+              style={styles.iconBtn}
+              onPress={() => router.push('/notifications')}
+            >
               <Ionicons name="notifications-outline" size={22} color={COLORS.foreground} />
-              <View style={styles.notifDot} />
+              {unreadCount > 0 && <View style={styles.notifDot} />}
             </TouchableOpacity>
             <TouchableOpacity onPress={() => router.push('/(tabs)/profile')}>
               <Image

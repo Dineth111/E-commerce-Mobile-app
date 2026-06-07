@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { COLORS, FONTS, FONT_SIZES, SHADOWS } from '@/constants/theme';
 import { useCartStore } from '@/stores/useCartStore';
+import { useSupabaseRealtime } from '@/hooks/useSupabaseRealtime';
 
 const TABS = [
   { name: 'index', label: 'Home', icon: 'home', iconOutline: 'home-outline' },
@@ -22,6 +23,7 @@ const TABS = [
 export default function TabLayout() {
   const { totalItems } = useCartStore();
   const cartCount = totalItems();
+  useSupabaseRealtime(); // Initialize realtime notifications
 
   return (
     <Tabs

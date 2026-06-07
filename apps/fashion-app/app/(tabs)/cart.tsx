@@ -7,9 +7,12 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Animated, { FadeInDown, Layout } from 'react-native-reanimated';
+import Animated, { FadeInDown, FadeIn, Layout } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
@@ -18,17 +21,24 @@ import { CartItemComponent } from '@/components/cart/CartItem';
 import { useCartStore } from '@/stores/useCartStore';
 import { ProductCard } from '@/components/product/ProductCard';
 import { MOCK_PRODUCTS } from '@/constants/mockData';
+import { createOrder } from '@/services/orders';
 
 export default function CartScreen() {
   const router = useRouter();
   const { items, promoCode, promoDiscount, subtotal, total, applyPromoCode, clearCart } = useCartStore();
   const [promoInput, setPromoInput] = useState('');
   const [promoError, setPromoError] = useState('');
-  const [checkoutStep, setCheckoutStep] = useState<'cart' | 'success'>('cart');
+  const [checkoutStep, setCheckoutStep] = useState<'cart' | 'checkout' | 'success'>('cart');
+  const [loading, setLoading] = useState(false);
+
+  // Checkout Form State
+  const [address, setAddress] = useState('123 Fashion Ave, NY 10001');
+  const [cardNumber, setCardNumber] = useState('**** **** **** 4242');
 
   const sub = subtotal();
   const tot = total();
   const shipping = sub > 150 ? 0 : 9.99;
+  const finalTotal = tot + shipping;
   const upsellProducts = MOCK_PRODUCTS.filter((p) => !items.some((i) => i.product.id === p.id)).slice(0, 3);
 
   const handlePromoApply = () => {
@@ -42,14 +52,27 @@ export default function CartScreen() {
     }
   };
 
-  const handleCheckout = async () => {
-    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setCheckoutStep('success');
-    setTimeout(() => {
-      clearCart();
-      setCheckoutStep('cart');
-      router.push('/(tabs)');
-    }, 3000);
+  const handlePlaceOrder = async () => {
+    if (!address.trim()) {
+      Alert.alert('Error', 'Please provide a shipping address');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await createOrder(items, finalTotal, address, 'Credit Card');
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setCheckoutStep('success');
+      setTimeout(() => {
+        clearCart();
+        setCheckoutStep('cart');
+        router.push('/(tabs)');
+      }, 3000);
+    } catch (error: any) {
+      Alert.alert('Checkout Failed', error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (checkoutStep === 'success') {
@@ -63,9 +86,87 @@ export default function CartScreen() {
             Order Confirmed!
           </Animated.Text>
           <Animated.Text entering={FadeInDown.delay(300)} style={styles.successSubtitle}>
-            Your fashion is on its way. Tracking details sent to your email.
+            Your fashion is on its way. We've sent the receipt and tracking details to your email.
           </Animated.Text>
         </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (checkoutStep === 'checkout') {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => setCheckoutStep('cart')}>
+              <Ionicons name="arrow-back" size={24} color={COLORS.foreground} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Secure Checkout</Text>
+            <View style={{ width: 24 }} />
+          </View>
+
+          <ScrollView contentContainerStyle={{ padding: SPACING.base, gap: SPACING.xl }}>
+            <Animated.View entering={FadeIn}>
+              <Text style={styles.checkoutSectionTitle}>Shipping Information</Text>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Full Address</Text>
+                <TextInput
+                  style={styles.checkoutInput}
+                  value={address}
+                  onChangeText={setAddress}
+                  placeholder="Street, City, Zip"
+                  placeholderTextColor={COLORS.muted}
+                />
+              </View>
+            </Animated.View>
+
+            <Animated.View entering={FadeIn.delay(100)}>
+              <Text style={styles.checkoutSectionTitle}>Payment Method</Text>
+              <View style={styles.cardContainer}>
+                <View style={styles.cardHeader}>
+                  <Ionicons name="card" size={24} color={COLORS.foreground} />
+                  <Text style={styles.cardTitle}>Credit Card</Text>
+                </View>
+                <TextInput
+                  style={styles.checkoutInput}
+                  value={cardNumber}
+                  onChangeText={setCardNumber}
+                  placeholder="Card Number"
+                  placeholderTextColor={COLORS.muted}
+                  keyboardType="numeric"
+                  editable={false} // Mock card
+                />
+                <Text style={styles.mockNote}>* Using secure mock payment gateway *</Text>
+              </View>
+            </Animated.View>
+
+            <Animated.View entering={FadeIn.delay(200)} style={styles.summary}>
+              <Text style={styles.summaryTitle}>Final Order Summary</Text>
+              <SummaryRow label={`${items.length} Items`} value={`$${sub.toFixed(2)}`} />
+              <SummaryRow label="Shipping" value={shipping === 0 ? 'FREE' : `$${shipping}`} />
+              {promoDiscount > 0 && (
+                <SummaryRow label={`Discount`} value={`-$${(sub * promoDiscount / 100).toFixed(2)}`} valueColor={COLORS.success} />
+              )}
+              <View style={styles.summaryDivider} />
+              <SummaryRow label="Total to Pay" value={`$${finalTotal.toFixed(2)}`} isTotal />
+            </Animated.View>
+
+            <TouchableOpacity 
+              style={styles.checkoutBtn} 
+              onPress={handlePlaceOrder}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                  <Text style={styles.checkoutText}>Place Order • ${finalTotal.toFixed(2)}</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -148,7 +249,7 @@ export default function CartScreen() {
             <SummaryRow label={`Promo (${promoDiscount}%)`} value={`-$${(sub * promoDiscount / 100).toFixed(2)}`} valueColor={COLORS.success} />
           )}
           <View style={styles.summaryDivider} />
-          <SummaryRow label="Total" value={`$${(tot + shipping).toFixed(2)}`} isTotal />
+          <SummaryRow label="Total" value={`$${finalTotal.toFixed(2)}`} isTotal />
         </View>
 
         {/* AI Upsell */}
@@ -171,11 +272,11 @@ export default function CartScreen() {
       <View style={styles.checkoutFooter}>
         <View style={styles.totalRow}>
           <Text style={styles.footerLabel}>Total</Text>
-          <Text style={styles.footerTotal}>${(tot + shipping).toFixed(2)}</Text>
+          <Text style={styles.footerTotal}>${finalTotal.toFixed(2)}</Text>
         </View>
-        <TouchableOpacity style={styles.checkoutBtn} onPress={handleCheckout} activeOpacity={0.85}>
+        <TouchableOpacity style={styles.checkoutBtn} onPress={() => setCheckoutStep('checkout')} activeOpacity={0.85}>
           <Ionicons name="lock-closed" size={16} color="#fff" />
-          <Text style={styles.checkoutText}>Secure Checkout</Text>
+          <Text style={styles.checkoutText}>Proceed to Checkout</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -199,8 +300,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   header: {
     flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 10,
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: SPACING.base,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.base,
@@ -309,4 +410,31 @@ const styles = StyleSheet.create({
   successIcon: { width: 120, height: 120, borderRadius: 60, backgroundColor: `${COLORS.success}20`, alignItems: 'center', justifyContent: 'center' },
   successTitle: { fontSize: FONT_SIZES['2xl'], color: COLORS.foreground, fontFamily: FONTS.bold, textAlign: 'center' },
   successSubtitle: { fontSize: FONT_SIZES.base, color: COLORS.muted, fontFamily: FONTS.regular, textAlign: 'center', lineHeight: 24 },
+  
+  // Checkout Form specific styles
+  checkoutSectionTitle: { fontSize: FONT_SIZES.md, color: COLORS.foreground, fontFamily: FONTS.bold, marginBottom: 8 },
+  inputGroup: { gap: 8 },
+  inputLabel: { fontSize: FONT_SIZES.sm, color: COLORS.muted, fontFamily: FONTS.medium },
+  checkoutInput: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: FONT_SIZES.base,
+    color: COLORS.foreground,
+    fontFamily: FONTS.regular,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  cardContainer: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.base,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 12,
+  },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  cardTitle: { fontSize: FONT_SIZES.base, color: COLORS.foreground, fontFamily: FONTS.semiBold },
+  mockNote: { fontSize: 11, color: COLORS.success, fontFamily: FONTS.regular, textAlign: 'center', marginTop: 4 },
 });
