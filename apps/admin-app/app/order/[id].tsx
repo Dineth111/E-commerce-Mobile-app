@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Image, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -37,6 +38,29 @@ export default function OrderDetailScreen() {
   };
   const queryClient = useQueryClient();
 
+  // Custom Modal State
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
+  const [modalType, setModalType] = useState<'info' | 'confirm'>('info');
+  const [onConfirmAction, setOnConfirmAction] = useState<(() => void) | null>(null);
+
+  const showCustomAlert = (title: string, message: string, onDismiss?: () => void) => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalType('info');
+    setOnConfirmAction(() => onDismiss || null);
+    setModalVisible(true);
+  };
+
+  const showCustomConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalType('confirm');
+    setOnConfirmAction(() => onConfirm);
+    setModalVisible(true);
+  };
+
   const { data: order, isLoading, error } = useQuery({
     queryKey: ['order', id],
     queryFn: async () => {
@@ -62,10 +86,10 @@ export default function OrderDetailScreen() {
     onSuccess: (newStatus) => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['order', id] });
-      Alert.alert('✅ Success', `Order status updated to ${newStatus}`);
+      showCustomAlert('Success', `Order status updated to ${newStatus}`);
     },
     onError: (err) => {
-      Alert.alert('Error', err.message);
+      showCustomAlert('Error', err.message);
     }
   });
 
@@ -93,31 +117,23 @@ export default function OrderDetailScreen() {
 
   const handleUpdateStatus = () => {
     if (!nextStatus) return;
-    if (Platform.OS === 'web') {
-      const confirm = window.confirm(`Move order to "${nextStatus}"?`);
-      if (confirm) {
+    showCustomConfirm(
+      'Update Status',
+      `Move order to "${nextStatus}"?`,
+      () => {
         updateMutation.mutate(nextStatus);
       }
-    } else {
-      Alert.alert('Update Status', `Move order to "${nextStatus}"?`, [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Update', onPress: () => updateMutation.mutate(nextStatus) },
-      ]);
-    }
+    );
   };
 
   const handleCancel = () => {
-    if (Platform.OS === 'web') {
-      const confirm = window.confirm('This will cancel the order. Are you sure?');
-      if (confirm) {
+    showCustomConfirm(
+      'Cancel Order',
+      'This will cancel the order. Are you sure?',
+      () => {
         updateMutation.mutate('cancelled');
       }
-    } else {
-      Alert.alert('Cancel Order', 'This will cancel the order. Are you sure?', [
-        { text: 'No', style: 'cancel' },
-        { text: 'Yes, Cancel', style: 'destructive', onPress: () => updateMutation.mutate('cancelled') },
-      ]);
-    }
+    );
   };
 
   return (
@@ -237,6 +253,37 @@ export default function OrderDetailScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* Custom Premium Modal Overlay */}
+      {modalVisible && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{modalTitle}</Text>
+            <Text style={styles.modalMessage}>{modalMessage}</Text>
+            <View style={styles.modalButtons}>
+              {modalType === 'confirm' && (
+                <TouchableOpacity 
+                  style={[styles.modalBtn, styles.modalBtnCancel]} 
+                  onPress={() => setModalVisible(false)}
+                >
+                  <Text style={styles.modalBtnCancelText}>Cancel</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity 
+                style={[styles.modalBtn, styles.modalBtnOk]} 
+                onPress={() => {
+                  setModalVisible(false);
+                  if (onConfirmAction) onConfirmAction();
+                }}
+              >
+                <Text style={styles.modalBtnOkText}>
+                  {modalType === 'confirm' ? 'Confirm' : 'OK'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -318,4 +365,76 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: Colors.cancelled,
   },
   cancelBtnText: { color: Colors.cancelled, fontWeight: '700', fontSize: 15 },
+
+  // Custom Modal Styles
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+    padding: Spacing.lg,
+  },
+  modalContent: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.xl,
+    width: '90%',
+    maxWidth: 340,
+    alignItems: 'center',
+    gap: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.text,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 14,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+    marginTop: 8,
+  },
+  modalBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBtnCancel: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+  },
+  modalBtnCancelText: {
+    color: Colors.text,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  modalBtnOk: {
+    backgroundColor: Colors.accent,
+  },
+  modalBtnOkText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+  },
 });

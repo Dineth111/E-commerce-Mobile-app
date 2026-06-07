@@ -39,6 +39,12 @@ export default function NotificationsScreen() {
       }
     } else if (notif.type === 'product' && notif.data?.productId) {
       router.push(`/product/${notif.data.productId}`);
+    } else if (notif.type === 'promo') {
+      if (notif.data?.productId) {
+        router.push(`/product/${notif.data.productId}`);
+      } else {
+        router.push('/(tabs)/index');
+      }
     }
   };
 
@@ -102,6 +108,8 @@ export default function NotificationsScreen() {
                       ? styles.orderIconBg
                       : notif.type === 'product'
                       ? styles.productIconBg
+                      : notif.type === 'promo'
+                      ? styles.promoIconBg
                       : styles.systemIconBg,
                   ]}
                 >
@@ -111,6 +119,8 @@ export default function NotificationsScreen() {
                         ? 'cube-outline'
                         : notif.type === 'product'
                         ? 'pricetag-outline'
+                        : notif.type === 'promo'
+                        ? 'gift-outline'
                         : 'information-circle-outline'
                     }
                     size={22}
@@ -251,6 +261,7 @@ const styles = StyleSheet.create({
   },
   orderIconBg: { backgroundColor: COLORS.warning },
   productIconBg: { backgroundColor: COLORS.primary },
+  promoIconBg: { backgroundColor: '#8B5CF6' },
   systemIconBg: { backgroundColor: COLORS.info },
   content: { flex: 1, gap: 3 },
   titleRow: {

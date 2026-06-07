@@ -8,6 +8,7 @@ export function useSupabaseRealtime() {
   useEffect(() => {
     let ordersSub: any = null;
     let productsSub: any = null;
+    let promotionsSub: any = null;
     let mounted = true;
 
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -68,12 +69,39 @@ export function useSupabaseRealtime() {
           }
         )
         .subscribe();
+
+      // ─── Subscribe to New Promotions (global) ─────────────────────────────
+      promotionsSub = supabase
+        .channel(`new-promotions-${Math.random().toString(36).substring(7)}`)
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'promotions' },
+          (payload) => {
+            const promo = payload.new as any;
+            if (promo?.code) {
+              const discountText = promo.type === 'percentage' 
+                ? `${promo.value}% OFF` 
+                : `LKR ${promo.value} OFF`;
+              addNotification({
+                title: promo.title || '🎁 Special Promotion!',
+                body: promo.description || `Use promo code ${promo.code} to get ${discountText} on your next order!`,
+                type: 'promo',
+                data: { 
+                  promoCode: promo.code,
+                  productId: promo.product_id || null,
+                },
+              });
+            }
+          }
+        )
+        .subscribe();
     });
 
     return () => {
       mounted = false;
       if (ordersSub) supabase.removeChannel(ordersSub);
       if (productsSub) supabase.removeChannel(productsSub);
+      if (promotionsSub) supabase.removeChannel(promotionsSub);
     };
   }, []);
 }

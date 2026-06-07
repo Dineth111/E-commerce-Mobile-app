@@ -9,7 +9,7 @@ export interface AppNotification {
   body: string;
   createdAt: string;
   read: boolean;
-  type: 'order' | 'product' | 'system';
+  type: 'order' | 'product' | 'system' | 'promo';
   data?: any;
 }
 

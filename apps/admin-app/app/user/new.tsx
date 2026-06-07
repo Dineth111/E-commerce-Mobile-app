@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   View, Text, ScrollView, TextInput, TouchableOpacity,
-  StyleSheet, Alert, Linking,
+  StyleSheet, Alert, Linking, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,6 +9,16 @@ import { useRouter } from 'expo-router';
 import { Colors, Spacing, Radius } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 import { useQueryClient } from '@tanstack/react-query';
+import { createClient } from '@supabase/supabase-js';
+
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || process.env.EXPO_PUBLIC_SUPABASE_KEY!;
+
+const tempSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: false,
+  },
+});
 
 export default function NewUserScreen() {
   const router = useRouter();
@@ -37,24 +47,70 @@ export default function NewUserScreen() {
   const [password, setPassword] = useState(generatePassword());
   const [saving, setSaving] = useState(false);
 
+  // Custom Modal State
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
+  const [modalType, setModalType] = useState<'info' | 'confirm'>('info');
+  const [onConfirmAction, setOnConfirmAction] = useState<(() => void) | null>(null);
+  const [onCancelAction, setOnCancelAction] = useState<(() => void) | null>(null);
+
+  const showCustomAlert = (title: string, message: string, onDismiss?: () => void) => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalType('info');
+    setOnConfirmAction(() => onDismiss || null);
+    setOnCancelAction(null);
+    setModalVisible(true);
+  };
+
+  const showCustomConfirm = (title: string, message: string, onConfirm: () => void, onCancel?: () => void) => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalType('confirm');
+    setOnConfirmAction(() => onConfirm);
+    setOnCancelAction(() => onCancel || null);
+    setModalVisible(true);
+  };
+
   const handleSave = async () => {
     if (!fullName.trim() || !email.trim()) {
-      Alert.alert('Error', 'Name and email are required');
+      showCustomAlert('Error', 'Name and email are required');
       return;
     }
     setSaving(true);
     try {
-      // In a real app, you would use an Edge Function or Supabase Admin API 
-      // to create an auth.user. For this demo, we mock it by inserting into profiles.
-      const payload = {
-        full_name: fullName,
-        email: email,
-        phone: phone,
-        role: role,
-      };
+      // 1. Sign up the user (triggers auth creation + handle_new_user trigger)
+      const { data: signUpData, error: signUpError } = await tempSupabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: fullName,
+            phone: phone,
+            role: role,
+          },
+        },
+      });
 
-      const { error } = await supabase.from('profiles').insert([payload]);
-      if (error) throw error;
+      if (signUpError) throw signUpError;
+      const newUserId = signUpData.user?.id;
+      if (!newUserId) throw new Error('User creation returned no user ID');
+
+      // 2. Perform profile update to ensure role, email, and phone are synced in profiles table
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({
+          full_name: fullName,
+          email: email,
+          phone: phone,
+          role: role,
+        })
+        .eq('id', newUserId);
+
+      if (profileError) {
+        console.warn('Profile update error:', profileError.message);
+      }
 
       queryClient.invalidateQueries({ queryKey: ['users'] });
 
@@ -70,25 +126,26 @@ export default function NewUserScreen() {
       
       const mailtoUrl = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
-      Alert.alert(
+      showCustomConfirm(
         'Success 📧',
-        'User profile created successfully! We will now open your email composer to draft their welcome credentials.',
-        [
-          {
-            text: 'Draft Email',
-            onPress: async () => {
-              try {
-                await Linking.openURL(mailtoUrl);
-              } catch (linkErr) {
-                Alert.alert('Mail Error', 'Could not open mail client. Please copy password: ' + password);
-              }
+        'User profile created successfully! Would you like to draft their welcome credentials email?',
+        async () => {
+          try {
+            await Linking.openURL(mailtoUrl);
+          } catch (linkErr) {
+            showCustomAlert('Mail Error', 'Could not open mail client. Please copy password: ' + password, () => {
               handleBack();
-            }
+            });
+            return;
           }
-        ]
+          handleBack();
+        },
+        () => {
+          handleBack();
+        }
       );
     } catch (e: any) {
-      Alert.alert('Error creating user', e.message);
+      showCustomAlert('Error creating user', e.message);
     } finally {
       setSaving(false);
     }
@@ -177,6 +234,40 @@ export default function NewUserScreen() {
         </TouchableOpacity>
 
       </ScrollView>
+
+      {/* Custom Premium Modal Overlay */}
+      {modalVisible && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{modalTitle}</Text>
+            <Text style={styles.modalMessage}>{modalMessage}</Text>
+            <View style={styles.modalButtons}>
+              {modalType === 'confirm' && (
+                <TouchableOpacity 
+                  style={[styles.modalBtn, styles.modalBtnCancel]} 
+                  onPress={() => {
+                    setModalVisible(false);
+                    if (onCancelAction) onCancelAction();
+                  }}
+                >
+                  <Text style={styles.modalBtnCancelText}>Cancel</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity 
+                style={[styles.modalBtn, styles.modalBtnOk]} 
+                onPress={() => {
+                  setModalVisible(false);
+                  if (onConfirmAction) onConfirmAction();
+                }}
+              >
+                <Text style={styles.modalBtnOkText}>
+                  {modalType === 'confirm' ? 'Confirm' : 'OK'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -225,4 +316,76 @@ const styles = StyleSheet.create({
   },
   saveBtnDisabled: { opacity: 0.6 },
   saveBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+
+  // Custom Modal Styles
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+    padding: Spacing.lg,
+  },
+  modalContent: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.xl,
+    width: '90%',
+    maxWidth: 340,
+    alignItems: 'center',
+    gap: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.text,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 14,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+    marginTop: 8,
+  },
+  modalBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBtnCancel: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+  },
+  modalBtnCancelText: {
+    color: Colors.text,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  modalBtnOk: {
+    backgroundColor: Colors.accent,
+  },
+  modalBtnOkText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+  },
 });

@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -55,6 +56,29 @@ export default function ProfileScreen() {
   const { totalItems } = useCartStore();
   const [activeTab, setActiveTab] = useState<'wardrobe' | 'orders' | 'profile'>('profile');
 
+  // Custom Modal State
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
+  const [modalType, setModalType] = useState<'info' | 'confirm'>('info');
+  const [onConfirmAction, setOnConfirmAction] = useState<(() => void) | null>(null);
+
+  const showCustomAlert = (title: string, message: string) => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalType('info');
+    setOnConfirmAction(null);
+    setModalVisible(true);
+  };
+
+  const showCustomConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalType('confirm');
+    setOnConfirmAction(() => onConfirm);
+    setModalVisible(true);
+  };
+
   // ── Fetch real orders from Supabase ──────────────────────────────────────
   const {
     data: orders = [],
@@ -84,24 +108,45 @@ export default function ProfileScreen() {
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   const handleLogout = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out',
-        style: 'destructive',
-        onPress: async () => {
-          await logout();
-          // Route protection in the layout handles the redirect to /login
-        },
-      },
-    ]);
+    showCustomConfirm(
+      'Sign Out',
+      'Are you sure you want to sign out of your account?',
+      async () => {
+        await logout();
+      }
+    );
   };
 
   const handleRetakeQuiz = () => {
-    Alert.alert('Retake Style Quiz', 'This will reset your style profile. Continue?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Retake', onPress: () => { resetProfile(); router.push('/quiz'); } },
-    ]);
+    showCustomConfirm(
+      'Retake Style Quiz',
+      'This will reset your style profile. Continue to retake the quiz?',
+      () => {
+        resetProfile();
+        router.push('/quiz');
+      }
+    );
+  };
+
+  const handleNotificationsPress = () => {
+    showCustomAlert(
+      'Notifications',
+      'Push notifications are enabled. You can manage notification preferences in your device settings.'
+    );
+  };
+
+  const handlePrivacyPress = () => {
+    showCustomAlert(
+      'Privacy Policy',
+      'Your data is secured with end-to-end encryption. We respect your privacy and do not share your shopping preferences with third parties.'
+    );
+  };
+
+  const handleHelpPress = () => {
+    showCustomAlert(
+      'Help & Support',
+      'Contact support at support@voguefashion.com or call our hotline: +94 11 234 5678.'
+    );
   };
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -202,9 +247,9 @@ export default function ProfileScreen() {
             {/* Settings */}
             <View style={styles.settingsCard}>
               <Text style={styles.cardTitle}>Settings</Text>
-              <SettingsRow icon="notifications-outline" label="Notifications" />
-              <SettingsRow icon="shield-outline"        label="Privacy" />
-              <SettingsRow icon="help-circle-outline"   label="Help & Support" />
+              <SettingsRow icon="notifications-outline" label="Notifications" onPress={handleNotificationsPress} />
+              <SettingsRow icon="shield-outline"        label="Privacy" onPress={handlePrivacyPress} />
+              <SettingsRow icon="help-circle-outline"   label="Help & Support" onPress={handleHelpPress} />
               <TouchableOpacity style={[styles.settingsRow, styles.logoutRow]} onPress={handleLogout}>
                 <Ionicons name="log-out-outline" size={20} color={COLORS.error} />
                 <Text style={[styles.settingsLabel, { color: COLORS.error }]}>Sign Out</Text>
@@ -316,6 +361,37 @@ export default function ProfileScreen() {
 
         <View style={{ height: 32 }} />
       </ScrollView>
+
+      {/* Custom Premium Modal Overlay */}
+      {modalVisible && (
+        <View style={styles.modalOverlay}>
+          <Animated.View entering={FadeInDown.duration(200)} style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{modalTitle}</Text>
+            <Text style={styles.modalMessage}>{modalMessage}</Text>
+            <View style={styles.modalButtons}>
+              {modalType === 'confirm' && (
+                <TouchableOpacity 
+                  style={[styles.modalBtn, styles.modalBtnCancel]} 
+                  onPress={() => setModalVisible(false)}
+                >
+                  <Text style={styles.modalBtnCancelText}>Cancel</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity 
+                style={[styles.modalBtn, styles.modalBtnOk]} 
+                onPress={() => {
+                  setModalVisible(false);
+                  if (onConfirmAction) onConfirmAction();
+                }}
+              >
+                <Text style={styles.modalBtnOkText}>
+                  {modalType === 'confirm' ? 'Confirm' : 'OK'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -343,9 +419,9 @@ function ProfileRow({ icon, label, value }: { icon: string; label: string; value
   );
 }
 
-function SettingsRow({ icon, label }: { icon: string; label: string }) {
+function SettingsRow({ icon, label, onPress }: { icon: string; label: string; onPress?: () => void }) {
   return (
-    <TouchableOpacity style={styles.settingsRow}>
+    <TouchableOpacity style={styles.settingsRow} onPress={onPress} activeOpacity={0.7}>
       <Ionicons name={icon as any} size={20} color={COLORS.muted} />
       <Text style={styles.settingsLabel}>{label}</Text>
       <Ionicons name="chevron-forward" size={18} color={COLORS.muted} style={{ marginLeft: 'auto' }} />
@@ -549,4 +625,77 @@ const styles = StyleSheet.create({
   orderStatusText: { fontSize: FONT_SIZES.xs, fontFamily: FONTS.semiBold },
   orderDate:       { fontSize: FONT_SIZES.xs, color: COLORS.muted,      fontFamily: FONTS.regular },
   orderMeta:       { fontSize: FONT_SIZES.sm, color: COLORS.foreground, fontFamily: FONTS.medium },
+
+  // ── Custom Modal ──
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+    padding: SPACING.xl,
+  },
+  modalContent: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.xl,
+    width: '100%',
+    maxWidth: 340,
+    alignItems: 'center',
+    gap: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.5,
+    shadowRadius: 15,
+    shadowOffset: { width: 0, height: 10 },
+  },
+  modalTitle: {
+    fontSize: FONT_SIZES.lg,
+    color: COLORS.foreground,
+    fontFamily: FONTS.bold,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.muted,
+    fontFamily: FONTS.regular,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+    marginTop: 8,
+  },
+  modalBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: RADIUS.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBtnCancel: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+  },
+  modalBtnCancelText: {
+    color: COLORS.foreground,
+    fontFamily: FONTS.semiBold,
+    fontSize: FONT_SIZES.sm,
+  },
+  modalBtnOk: {
+    backgroundColor: COLORS.primary,
+  },
+  modalBtnOkText: {
+    color: '#fff',
+    fontFamily: FONTS.bold,
+    fontSize: FONT_SIZES.sm,
+  },
 });

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TextInput, TouchableOpacity,
-  StyleSheet, Alert, ActivityIndicator
+  StyleSheet, Alert, ActivityIndicator, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -37,6 +37,29 @@ export default function ProductEditorScreen() {
   const [images, setImages] = useState<string[]>([]);
   const [stock, setStock] = useState('0');
   const [saving, setSaving] = useState(false);
+
+  // Custom Modal State
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
+  const [modalType, setModalType] = useState<'info' | 'confirm'>('info');
+  const [onConfirmAction, setOnConfirmAction] = useState<(() => void) | null>(null);
+
+  const showCustomAlert = (title: string, message: string, onDismiss?: () => void) => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalType('info');
+    setOnConfirmAction(() => onDismiss || null);
+    setModalVisible(true);
+  };
+
+  const showCustomConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalType('confirm');
+    setOnConfirmAction(() => onConfirm);
+    setModalVisible(true);
+  };
 
   // Fetch product data if not new
   const { data: product, isLoading: loadingProduct } = useQuery({
@@ -126,7 +149,7 @@ export default function ProductEditorScreen() {
 
   const handleSave = async () => {
     if (!name.trim() || !price.trim()) {
-      Alert.alert('Error', 'Product name and price are required');
+      showCustomAlert('Error', 'Product name and price are required');
       return;
     }
     setSaving(true);
@@ -157,14 +180,40 @@ export default function ProductEditorScreen() {
       }
 
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      Alert.alert('Success', `Product ${isNew ? 'created' : 'updated'} successfully`, [
-        { text: 'OK', onPress: () => router.back() }
-      ]);
+      showCustomAlert('Success', `Product ${isNew ? 'created' : 'updated'} successfully`, () => {
+        router.back();
+      });
     } catch (e: any) {
-      Alert.alert('Error saving product', e.message);
+      showCustomAlert('Error saving product', e.message);
     } finally {
       setSaving(false);
     }
+  };
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from('products').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      showCustomAlert('Success', 'Product deleted successfully', () => {
+        router.back();
+      });
+    },
+    onError: (err: any) => {
+      showCustomAlert('Error', err.message);
+    }
+  });
+
+  const handleDelete = () => {
+    showCustomConfirm(
+      'Delete Product',
+      'Are you sure you want to delete this product? This action cannot be undone.',
+      () => {
+        deleteMutation.mutate();
+      }
+    );
   };
 
   return (
@@ -310,7 +359,52 @@ export default function ProductEditorScreen() {
         >
           <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save Product'}</Text>
         </TouchableOpacity>
+
+        {/* Delete button (Only for existing products) */}
+        {!isNew && (
+          <TouchableOpacity
+            style={[styles.deleteBtn, deleteMutation.isPending && styles.deleteBtnDisabled]}
+            onPress={handleDelete}
+            disabled={deleteMutation.isPending}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.deleteBtnText}>
+              {deleteMutation.isPending ? 'Deleting...' : 'Delete Product'}
+            </Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
+
+      {/* Custom Premium Modal Overlay */}
+      {modalVisible && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{modalTitle}</Text>
+            <Text style={styles.modalMessage}>{modalMessage}</Text>
+            <View style={styles.modalButtons}>
+              {modalType === 'confirm' && (
+                <TouchableOpacity 
+                  style={[styles.modalBtn, styles.modalBtnCancel]} 
+                  onPress={() => setModalVisible(false)}
+                >
+                  <Text style={styles.modalBtnCancelText}>Cancel</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity 
+                style={[styles.modalBtn, styles.modalBtnOk]} 
+                onPress={() => {
+                  setModalVisible(false);
+                  if (onConfirmAction) onConfirmAction();
+                }}
+              >
+                <Text style={styles.modalBtnOkText}>
+                  {modalType === 'confirm' ? 'Confirm' : 'OK'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -371,4 +465,88 @@ const styles = StyleSheet.create({
   },
   saveBtnDisabled: { opacity: 0.6 },
   saveBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  deleteBtn: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: Colors.cancelled,
+    borderRadius: Radius.lg,
+    height: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+  },
+  deleteBtnDisabled: { opacity: 0.6 },
+  deleteBtnText: { color: Colors.cancelled, fontWeight: '700', fontSize: 16 },
+
+  // Custom Modal Styles
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+    padding: Spacing.lg,
+  },
+  modalContent: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.xl,
+    width: '90%',
+    maxWidth: 340,
+    alignItems: 'center',
+    gap: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.text,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 14,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+    marginTop: 8,
+  },
+  modalBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBtnCancel: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+  },
+  modalBtnCancelText: {
+    color: Colors.text,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  modalBtnOk: {
+    backgroundColor: Colors.accent,
+  },
+  modalBtnOkText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+  },
 });
